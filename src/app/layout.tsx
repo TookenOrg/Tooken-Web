@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { REM, Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
-import { Navbar } from "@/components/ui/navbar"
+import { Navbar } from "@/components/navbar/navbar"
 
 const rem = REM({
   variable: "--font-rem",

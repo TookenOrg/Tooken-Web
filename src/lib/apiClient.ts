@@ -9,7 +9,6 @@ interface FetchOptions extends RequestInit {
 export async function apiFetch(path: string, options: FetchOptions = {}) {
     const { skipAuth = false, headers, ...rest } = options;
 
-    // Récupère le token JWT depuis localStorage
     let token: string | null = null;
     if (!skipAuth && typeof window !== "undefined") {
         token = localStorage.getItem("TOKEN");
@@ -24,7 +23,6 @@ export async function apiFetch(path: string, options: FetchOptions = {}) {
         },
     });
 
-    // Gestion automatique des erreurs
     if (!res.ok) {
         const errorData = await res.json().catch(() => ({}));
         const message = errorData.error || res.statusText || "API Error";

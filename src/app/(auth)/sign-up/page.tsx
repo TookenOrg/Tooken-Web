@@ -24,20 +24,20 @@ export default function SignUpPage() {
     return (
         <div className="flex min-h-screen flex-col md:flex-row bg-[#2D2B3D]">
             {/* Partie gauche : branding */}
-            <div className="md:w-3/5 w-full flex flex-col items-center justify-center text-white p-12 md:p-16">
+            <div className="md:w-3/5 w-full flex flex-col items-center justify-center text-white p-12 md:p-16 bg-animated-gradient-dark">
                 <h1 className="text-5xl font-bold mb-6 text-center md:text-left">Tooken</h1>
                 <p className="text-lg max-w-md text-center md:text-left">
                     Créez votre compte et commencez à gérer vos NFTs Soulbound en toute sécurité.
                 </p>
                 <img
-                    src="/logo.png"
+                    src="/logo-transparent_3000.png"
                     alt="Tooken Logo"
                     className="mt-10 w-48 md:w-64"
                 />
             </div>
 
             {/* Partie droite : formulaire */}
-            <div className="md:w-2/5 w-full flex items-center justify-center p-12 md:p-16 bg-white rounded-tl-[2rem] md:rounded-tl-none md:rounded-l-[2rem]">
+            <div className="md:w-2/5 w-full flex items-center justify-center p-12 md:p-16 bg-white">
                 <div className="w-full max-w-md space-y-6">
                     <h2 className="text-3xl font-bold text-gray-800 text-center">Sign Up</h2>
 
