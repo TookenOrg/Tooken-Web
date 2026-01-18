@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { ArrowRight, Building2, ShieldCheck, Wallet } from "lucide-react";
 import Image from "next/image"
+import Link from "next/link";
 
 export default function Page() {
   return (
@@ -19,9 +20,11 @@ export default function Page() {
             Tooken lets you invest in real-world properties through tokenization. Accessible, transparent, and secure.
           </p>
           <div className="mt-8 flex gap-4">
-            <Button size="lg" className="bg-amber-500 hover:bg-amber-600">
-              Explore real estate <ArrowRight className="ml-2 h-4 w-4" />
-            </Button>
+            <Link href="/explore">
+              <Button size="lg" className="bg-amber-500 hover:bg-amber-600">
+                Explore real estate <ArrowRight className="ml-2 h-4 w-4" />
+              </Button>
+            </Link>
             <Button size="lg" variant="outline" className="border-white text-black hover:bg-white hover:text-[#2D2B3D]">
               How it works
             </Button>
@@ -39,18 +42,18 @@ export default function Page() {
             />
           </div>
         </div>
-      </section>
+      </section >
 
       {/* TRUST */}
-      <section className="bg-[#262435] py-20">
+      < section className="bg-[#262435] py-20" >
         <div className="max-w-7xl mx-auto px-6 grid md:grid-cols-3 gap-8">
           <Card className="bg-[#2D2B3D] border border-white/10">
             <CardContent className="p-6">
               <ShieldCheck className="h-10 w-10 text-cyan-400" />
-              <h3 className="mt-4 text-xl font-semibold text-cyan-400">Sécurité & conformité</h3>
+              <h3 className="mt-4 text-xl font-semibold text-cyan-400">Security & Compliance</h3>
               <p className="mt-2 text-gray-300">
-                Chaque investissement est encadré juridiquement et sécurisé
-                par la blockchain.
+                Each investment is legally regulated and secured
+                by blockchain technology.
               </p>
             </CardContent>
           </Card>
@@ -58,10 +61,10 @@ export default function Page() {
           <Card className="bg-[#2D2B3D] border border-white/10">
             <CardContent className="p-6">
               <Building2 className="h-10 w-10 text-cyan-400" />
-              <h3 className="mt-4 text-xl font-semibold text-cyan-400">Biens réels</h3>
+              <h3 className="mt-4 text-xl font-semibold text-cyan-400">Real estate</h3>
               <p className="mt-2 text-gray-300">
-                Investissez dans des projets immobiliers concrets, sélectionnés
-                avec rigueur.
+                Invest in concrete real estate projects, selected
+                with rigor.
               </p>
             </CardContent>
           </Card>
@@ -69,24 +72,24 @@ export default function Page() {
           <Card className="bg-[#2D2B3D] border border-white/10">
             <CardContent className="p-6">
               <Wallet className="h-10 w-10 text-cyan-400" />
-              <h3 className="mt-4 text-xl font-semibold text-cyan-400">Accessible à tous</h3>
+              <h3 className="mt-4 text-xl font-semibold text-cyan-400">Open to everyone</h3>
               <p className="mt-2 text-gray-300">
-                Démarrez avec un ticket réduit et suivez vos revenus en temps réel.
+                Start with a discounted ticket and track your earnings in real time.
               </p>
             </CardContent>
           </Card>
         </div>
-      </section>
+      </section >
 
       {/* HOW IT WORKS */}
-      <section className="py-24 max-w-7xl mx-auto px-6">
-        <h2 className="text-3xl font-bold text-center">Comment ça marche</h2>
+      < section className="py-24 max-w-7xl mx-auto px-6" >
+        <h2 className="text-3xl font-bold text-center">How it works</h2>
         <div className="mt-16 grid md:grid-cols-4 gap-8 text-center">
           {[
-            "Créez votre compte",
-            "Vérifiez votre identité",
-            "Investissez dans un bien",
-            "Recevez vos revenus",
+            "Create your account",
+            "Verify your identity",
+            "Invest in a property",
+            "Receive your income"
           ].map((step, i) => (
             <div key={i} className="p-6 rounded-2xl bg-[#262435]">
               <div className="text-amber-400 text-2xl font-bold">{i + 1}</div>
@@ -94,20 +97,20 @@ export default function Page() {
             </div>
           ))}
         </div>
-      </section>
+      </section >
 
       {/* CTA FINAL */}
-      <section className="bg-amber-500 py-20 text-center">
-        <h2 className="text-3xl font-bold text-[#2D2B3D]">Prêt à investir dans l’immobilier ?</h2>
+      < section className="bg-amber-500 py-20 text-center" >
+        <h2 className="text-3xl font-bold text-[#2D2B3D]">Ready to invest in real estate?</h2>
         <p className="mt-4 text-amber-100">
-          Rejoignez Tooken et accédez à une nouvelle façon d’investir.
+          Join Tooken and discover a new way to invest.
         </p>
         <div className="mt-8">
           <Button size="lg" className="bg-white text-[#2D2B3D] hover:bg-gray-100">
-            Créer un compte
+            Create an account
           </Button>
         </div>
-      </section>
-    </div>
+      </section >
+    </div >
   );
 }

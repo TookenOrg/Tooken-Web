@@ -130,3 +130,42 @@
     @apply bg-background text-foreground;
   }
 }
+
+@keyframes gradientMove {
+  0% {
+    background-position: 0% 50%;
+  }
+
+  50% {
+    background-position: 100% 50%;
+  }
+
+  100% {
+    background-position: 0% 50%;
+  }
+}
+
+.bg-animated-gradient-dark {
+  background-image:
+    /* Grid ultra subtil */
+    radial-gradient(circle at 1px 1px,
+      rgba(255, 255, 255, 0.035) 1px,
+      transparent 0),
+    /* Gradient sombre premium */
+    linear-gradient(120deg,
+      #2D2B3D,
+      #23213a,
+      #3a3755);
+
+  background-size:
+    48px 48px,
+    260% 260%;
+
+  animation: gradientMove 4s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bg-animated-gradient {
+    animation: none;
+  }
+}

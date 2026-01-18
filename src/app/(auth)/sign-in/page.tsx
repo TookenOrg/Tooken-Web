@@ -2,7 +2,7 @@
 
 import { useForm } from "react-hook-form"
 import { Input } from "@/components/ui/input"
-import { signIn } from "@/lib/api/auth";
+import { signIn } from "@/lib/api/auth/auth";
 import { Button } from "@/components/ui/button"
 import { useState } from "react";
 import { useRouter } from "next/navigation";
@@ -53,20 +53,24 @@ export default function SignInPage() {
     return (
         <div className="flex min-h-screen flex-col md:flex-row bg-[#2D2B3D]">
             {/* Partie gauche : branding */}
-            <div className="md:w-3/5 w-full flex flex-col items-center justify-center text-white p-12 md:p-16">
-                <h1 className="text-5xl font-bold mb-6 text-center md:text-left">Tooken</h1>
+            <div className="md:w-3/5 w-full flex flex-col items-center justify-center text-white p-12 md:p-16 bg-animated-gradient-dark">
+                <h1 className="text-5xl font-bold mb-6 text-center md:text-left">
+                    Tooken
+                </h1>
+
                 <p className="text-lg max-w-md text-center md:text-left">
                     Connectez-vous pour accéder à votre tableau de bord et gérer vos NFTs Soulbound.
                 </p>
+
                 <img
-                    src="/logo.png"
+                    src="/logo-transparent_3000.png"
                     alt="Tooken Logo"
                     className="mt-10 w-48 md:w-64"
                 />
             </div>
 
             {/* Partie droite : formulaire */}
-            <div className="md:w-2/5 w-full flex items-center justify-center p-12 md:p-16 bg-white rounded-tl-[2rem] md:rounded-tl-none md:rounded-l-[2rem]">
+            <div className="md:w-2/5 w-full flex items-center justify-center p-12 md:p-16 bg-white">
                 <div className="w-full max-w-md space-y-6">
                     <h2 className="text-3xl font-bold text-gray-800 text-center">Sign In</h2>
 
