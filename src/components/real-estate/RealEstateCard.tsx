@@ -2,10 +2,10 @@
 
 import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { Button } from "@/components/ui/button"
 import { Progress } from "@/components/ui/progress"
-import { Sparkles, Coins, ArrowRight, Building2 } from "lucide-react"
+import { Sparkles, Coins, Building2 } from "lucide-react"
 import type { RealEstate } from "@/types/real-estate/RealEstate"
+import { Skeleton } from "../ui/skeleton"
 
 type RealEstateCardProps = {
     estate: RealEstate
@@ -93,5 +93,35 @@ export function RealEstateCard({ estate, onViewDetails }: RealEstateCardProps) {
         </Card>
     )
 }
+
+export function RealEstateListSkeleton() {
+    return (
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6">
+            {Array.from({ length: 6 }).map((_, i) => (
+                <div
+                    key={i}
+                    className="bg-white rounded-2xl shadow-sm p-4 space-y-4"
+                >
+                    {/* Image */}
+                    <Skeleton className="h-48 w-full rounded-xl" />
+
+                    {/* Title */}
+                    <Skeleton className="h-5 w-3/4" />
+
+                    {/* Description */}
+                    <Skeleton className="h-4 w-full" />
+                    <Skeleton className="h-4 w-5/6" />
+
+                    {/* Footer */}
+                    <div className="flex justify-between items-center pt-2">
+                        <Skeleton className="h-4 w-20" />
+                        <Skeleton className="h-8 w-24 rounded-lg" />
+                    </div>
+                </div>
+            ))}
+        </div>
+    )
+}
+
 
 export default RealEstateCard

@@ -5,11 +5,20 @@ import { useState, useEffect } from "react"
 import type { RealEstate } from "@/types/real-estate/RealEstate"
 import RealEstateList from "@/components/real-estate/RealEstateList"
 import { getActiveRealEstate } from "@/lib/api/real-estate/real-estate";
+import { RealEstateListSkeleton } from "@/components/real-estate/RealEstateCard"
+
 
 export default function ExplorePage() {
+    const FADE_DURATION = 700 // ms (debug)
     const [loading, setLoading] = useState(true)
+
+    const [fadePhase, setFadePhase] = useState<
+        "loading" | "fading" | "done"
+    >("loading")
+
     const [realEstates, setRealEstates] = useState<RealEstate[]>([])
     const [filteredEstates, setFilteredEstates] = useState<RealEstate[]>([])
+
 
     useEffect(() => {
         async function fetchEstates() {
@@ -26,7 +35,20 @@ export default function ExplorePage() {
         fetchEstates()
     }, [])
 
-    if (loading) return <div>Loading…</div>
+    useEffect(() => {
+        if (!loading) {
+            setFadePhase("fading")
+
+            const timeout = setTimeout(() => {
+                setFadePhase("done")
+            }, FADE_DURATION)
+
+            return () => clearTimeout(timeout)
+        }
+    }, [loading])
+
+
+
 
     return (
         <div className="w-[70%] min-h-screen bg-[#F6F7FB] text-gray-900 p-2">
@@ -45,9 +67,37 @@ export default function ExplorePage() {
                 </div>
             </section>
 
+
             {/* Listings */}
-            <section className=" mx-auto px-6 md:px-0 pb-24">
-                <RealEstateList realEstates={filteredEstates} />
+            <section className="relative mx-auto px-6 md:px-0 pb-24">
+                {/* Skeleton */}
+                <div
+                    className={`
+                        absolute inset-0
+                        transition-opacity
+                        duration-[${FADE_DURATION}ms]
+                        ${fadePhase === "loading"
+                            ? "opacity-100"
+                            : "opacity-0"
+                        }
+                    `}
+                >
+                    <RealEstateListSkeleton />
+                </div>
+
+                {/* Contenu */}
+                <div
+                    className={`
+                        transition-opacity
+                        duration-[${FADE_DURATION}ms]
+                        ${fadePhase === "done"
+                            ? "opacity-100"
+                            : "opacity-0"
+                        }
+                    `}
+                >
+                    <RealEstateList realEstates={filteredEstates} />
+                </div>
             </section>
         </div>
     )
