@@ -22,7 +22,8 @@ export interface RealEstateSpecification {
 }
 
 export interface RealEstateProgression {
-    tokens_sold: number
+    tokens_sold: number;
+    tokens_sold_pctg: number;
 }
 
 export interface RealEstate {

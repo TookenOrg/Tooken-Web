@@ -1,5 +1,6 @@
 "use client";
 
+import { CallToAction } from "@/components/marketing/CallToAction";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { ArrowRight, Building2, ShieldCheck, Wallet } from "lucide-react";
@@ -100,17 +101,7 @@ export default function Page() {
       </section >
 
       {/* CTA FINAL */}
-      < section className="bg-amber-500 py-20 text-center" >
-        <h2 className="text-3xl font-bold text-[#2D2B3D]">Ready to invest in real estate?</h2>
-        <p className="mt-4 text-amber-100">
-          Join Tooken and discover a new way to invest.
-        </p>
-        <div className="mt-8">
-          <Button size="lg" className="bg-white text-[#2D2B3D] hover:bg-gray-100">
-            Create an account
-          </Button>
-        </div>
-      </section >
+      <CallToAction />
     </div >
   );
 }

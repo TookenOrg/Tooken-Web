@@ -29,7 +29,7 @@ export default function ExplorePage() {
     if (loading) return <div>Loading…</div>
 
     return (
-        <div className="w-[70%] min-h-screen bg-[#F6F7FB] text-gray-900">
+        <div className="w-[70%] min-h-screen bg-[#F6F7FB] text-gray-900 p-2">
             {/* Hero */}
             <section className="px-6 md:px-12 py-20 max-w-7xl mx-auto">
                 <h1 className="text-4xl md:text-5xl font-bold mb-4">

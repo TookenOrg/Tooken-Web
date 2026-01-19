@@ -10,7 +10,7 @@ type RealEstateListProps = {
 
 export default function RealEstateList({ realEstates = [], onViewDetails }: RealEstateListProps) {
     return (
-        <div className="max-w-[4*280px] mx-auto"> {/* 4 colonnes x 280px de largeur carte */}
+        <div className="max-w-[4*280px] mx-auto">
             {realEstates.length === 0 ? (
                 <div className="text-gray-500 text-center py-20">
                     No estates found

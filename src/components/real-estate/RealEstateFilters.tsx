@@ -12,14 +12,14 @@ export type FiltersProps = {
 }
 
 export function RealEstateFilters({ realEstates, onFilterChange }: FiltersProps) {
-    const [typeFilter, setTypeFilter] = useState<string | null>(null)
+    const [typeFilter, setFrequencyFilter] = useState<string | null>(null)
     const [priceRange, setPriceRange] = useState([0, 1000])
-    const [yieldRange, setYieldRange] = useState([0.1, 30])
+    const [yieldRange, setYieldRange] = useState([0.1, 15])
 
     useEffect(() => {
         let filtered = realEstates || [] // fallback
 
-        if (typeFilter) filtered = filtered.filter(r => r.estate_type === typeFilter)
+        if (typeFilter) filtered = filtered.filter(r => r.configuration.payment_frequency_type === typeFilter)
 
         filtered = filtered.filter(r =>
             r.configuration.price_per_share >= priceRange[0] &&
@@ -35,22 +35,23 @@ export function RealEstateFilters({ realEstates, onFilterChange }: FiltersProps)
     }, [typeFilter, priceRange, yieldRange, realEstates, onFilterChange])
 
     return (
-        <div className="bg-[#1F1D2B] text-white backdrop-blur-lg p-6 rounded-2xl shadow-lg grid grid-cols-1 md:grid-cols-2 gap-6 items-end">
+        <div className="bg-[#1F1D2B] text-white backdrop-blur-lg p-6 rounded-2xl shadow-lg grid grid-cols-1 md:grid-cols-3 gap-6 items-end">
 
             {/* Type Select */}
-            {/* <div className="flex flex-col">
-                <label className="text-sm mb-2">Property Type</label>
-                <Select onValueChange={setTypeFilter} value={typeFilter ?? ""}>
+            <div className="flex flex-col">
+                <label className="text-sm mb-2">Payment frequency</label>
+                <Select onValueChange={setFrequencyFilter} value={typeFilter ?? ""}>
                     <SelectTrigger className="w-full">
                         <SelectValue placeholder="All types" />
                     </SelectTrigger>
                     <SelectContent>
-                        <SelectItem value="building">Building</SelectItem>
-                        <SelectItem value="house">House</SelectItem>
-                        <SelectItem value="land">Land</SelectItem>
+                        <SelectItem value="HOUR">Hourly</SelectItem>
+                        <SelectItem value="DAY">Daily</SelectItem>
+                        <SelectItem value="MONTH">Monthly</SelectItem>
+                        <SelectItem value="YEAR">Annually</SelectItem>
                     </SelectContent>
                 </Select>
-            </div> */}
+            </div>
 
             {/* Price Dual Slider */}
             <div className="flex flex-col">
@@ -76,7 +77,7 @@ export function RealEstateFilters({ realEstates, onFilterChange }: FiltersProps)
                 <label className="text-sm mb-2">Yield (%)</label>
                 <DualRangeSlider
                     min={0.1}
-                    max={30}
+                    max={15}
                     step={0.1}
                     value={yieldRange}
                     rangeColor="amber"
@@ -95,7 +96,7 @@ export function RealEstateFilters({ realEstates, onFilterChange }: FiltersProps)
                 <Button
                     className="bg-gradient-to-r from-purple-500 to-blue-500 text-white hover:opacity-90 transition-all"
                     onClick={() => {
-                        setTypeFilter(null)
+                        setFrequencyFilter(null)
                         setPriceRange([0, 1000])
                         setYieldRange([0, 30])
                     }}

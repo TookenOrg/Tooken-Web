@@ -133,25 +133,43 @@
 
 @keyframes gradientMove {
   0% {
-    background-position: 0% 50%;
+    background-position:
+      0 0,
+      0% 50%;
   }
 
   50% {
-    background-position: 100% 50%;
+    background-position:
+      24px 24px,
+      100% 50%;
   }
 
   100% {
-    background-position: 0% 50%;
+    background-position:
+      0 0,
+      0% 50%;
+  }
+}
+
+@keyframes float {
+  0% {
+    transform: translateY(0px);
+  }
+
+  50% {
+    transform: translateY(-16px);
+  }
+
+  100% {
+    transform: translateY(0px);
   }
 }
 
 .bg-animated-gradient-dark {
   background-image:
-    /* Grid ultra subtil */
     radial-gradient(circle at 1px 1px,
       rgba(255, 255, 255, 0.035) 1px,
       transparent 0),
-    /* Gradient sombre premium */
     linear-gradient(120deg,
       #2D2B3D,
       #23213a,
@@ -161,11 +179,69 @@
     48px 48px,
     260% 260%;
 
-  animation: gradientMove 4s ease-in-out infinite;
+  animation: gradientMove 5s ease-in-out infinite;
+}
+
+.bg-animated-gradient-amber {
+  background-image:
+    radial-gradient(circle at 1px 1px,
+      rgba(255, 255, 255, 0.08) 1px,
+      transparent 0),
+    linear-gradient(120deg,
+      #FBBF24,
+      #F59E0B,
+      #FB923C);
+
+  background-size:
+    48px 48px,
+    260% 260%;
+
+  animation: gradientMove 5s ease-in-out infinite;
+}
+
+.bg-animated-gradient-white {
+  background-image:
+    radial-gradient(circle at 2px 2px,
+      rgba(0, 0, 0, 0.08) 2px,
+      transparent 0),
+    linear-gradient(120deg,
+      #ffffff,
+      #fffcf6,
+      #ffffff);
+
+  background-size:
+    48px 48px,
+    260% 260%;
+
+  animation: gradientMove 15s ease-in-out infinite;
 }
 
 @media (prefers-reduced-motion: reduce) {
   .bg-animated-gradient {
     animation: none;
   }
+}
+
+@keyframes fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(32px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-fade-up {
+  animation: fade-up 0.7s ease-out both;
+}
+
+.animate-float-slow {
+  animation: float 12s ease-in-out infinite;
+}
+
+.animate-float-slower {
+  animation: float 18s ease-in-out infinite;
 }
