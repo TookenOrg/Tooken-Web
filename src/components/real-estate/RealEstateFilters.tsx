@@ -98,7 +98,7 @@ export function RealEstateFilters({ realEstates, onFilterChange }: FiltersProps)
                     onClick={() => {
                         setFrequencyFilter(null)
                         setPriceRange([0, 1000])
-                        setYieldRange([0, 30])
+                        setYieldRange([0.1, 15])
                     }}
                 >
                     Reset Filters

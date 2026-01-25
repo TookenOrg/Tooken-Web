@@ -1,8 +1,8 @@
 import { RealEstate } from "@/types/real-estate/RealEstate"
 import { apiFetch } from "@/lib/apiClient"
 
-export async function getActiveRealEstate(): Promise<RealEstate[]> {
-    const rep = await apiFetch("/assets/real-estates/active", {
+export async function setFavorite(value: boolean): Promise<RealEstate[]> {
+    const rep = await apiFetch("/assets/real_estates/active", {
         method: "GET",
         skipAuth: true,
     })
@@ -11,7 +11,7 @@ export async function getActiveRealEstate(): Promise<RealEstate[]> {
 
 export async function getRealEstateById(id: string): Promise<RealEstate> {
     console.log(id)
-    const rep = await apiFetch("/assets/real-estates/" + id, {
+    const rep = await apiFetch("/assets/real_estates/" + id, {
         method: "GET",
         skipAuth: true,
     })
