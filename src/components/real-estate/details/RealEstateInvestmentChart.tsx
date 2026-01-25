@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Area, AreaChart } from 'recharts'
+import { Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Area, AreaChart } from 'recharts'
 import type { RealEstate } from '@/types/real-estate/RealEstate'
 import { formatCurrency } from '@/lib/formatters'
 
