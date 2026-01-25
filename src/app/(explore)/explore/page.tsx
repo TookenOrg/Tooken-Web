@@ -9,7 +9,7 @@ import { RealEstateListSkeleton } from "@/components/real-estate/RealEstateCard"
 
 
 export default function ExplorePage() {
-    const FADE_DURATION = 700 // ms (debug)
+    const FADE_DURATION = 700 // ms 
     const [loading, setLoading] = useState(true)
 
     const [fadePhase, setFadePhase] = useState<
@@ -75,7 +75,7 @@ export default function ExplorePage() {
                     className={`
                         absolute inset-0
                         transition-opacity
-                        duration-[${FADE_DURATION}ms]
+                        duration-[700ms]
                         ${fadePhase === "loading"
                             ? "opacity-100"
                             : "opacity-0"
@@ -89,7 +89,7 @@ export default function ExplorePage() {
                 <div
                     className={`
                         transition-opacity
-                        duration-[${FADE_DURATION}ms]
+                        duration-[700ms]
                         ${fadePhase === "done"
                             ? "opacity-100"
                             : "opacity-0"

@@ -9,7 +9,10 @@ import { Skeleton } from "../ui/skeleton"
 
 type RealEstateCardProps = {
     estate: RealEstate
-    onViewDetails?: (estate: RealEstate) => void
+    onViewDetails?: (
+        estate: RealEstate,
+        e?: React.MouseEvent<HTMLDivElement, MouseEvent>
+    ) => void
 }
 
 export function RealEstateCard({ estate, onViewDetails }: RealEstateCardProps) {
@@ -28,7 +31,30 @@ export function RealEstateCard({ estate, onViewDetails }: RealEstateCardProps) {
     }
 
     return (
-        <Card className="rounded-2xl overflow-hidden bg-white/70 backdrop-blur-xl border border-white/40 shadow-lg hover:shadow-xl transition" >
+        <Card className="
+        rounded-2xl
+        overflow-hidden
+        bg-white/70
+        backdrop-blur-xl
+        border border-white/40
+        shadow-lg
+        transition
+        cursor-pointer
+        hover:shadow-xl
+        hover:-translate-y-1
+        focus-visible:ring-2
+        focus-visible:ring-emerald-500
+    "
+            role="button"
+            tabIndex={0}
+            onClick={(e) => onViewDetails?.(estate, e)}
+            onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault() // empêche le scroll pour Space
+                    onViewDetails?.(estate) // pas besoin de passer e
+                }
+            }}>
+
             {/* Image / Placeholder */}
             <div className="h-40 bg-gradient-to-br from-gray-200 to-gray-100 flex items-center justify-center">
                 {shouldShowImage ? (
@@ -82,13 +108,6 @@ export function RealEstateCard({ estate, onViewDetails }: RealEstateCardProps) {
                     </div>
                     <span className="font-semibold">€{estate.configuration.price_per_share}</span>
                 </div>
-
-                {/* <Button
-                    className="w-full bg-[#2D2B3D] hover:bg-[#1f1d2e] text-white"
-                    onClick={() => onViewDetails?.(estate)}
-                >
-                    View details <ArrowRight className="ml-2 h-4 w-4" />
-                </Button> */}
             </CardContent>
         </Card>
     )

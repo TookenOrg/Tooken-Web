@@ -37,7 +37,7 @@ export default function SignUpPage() {
             </div>
 
             {/* Partie droite : formulaire */}
-            <div className="md:w-2/5 w-full flex items-center justify-center p-12 md:p-16 bg-white">
+            <div className="md:w-2/5 w-full flex items-center justify-center p-12 md:p-16  bg-animated-gradient-white">
                 <div className="w-full max-w-md space-y-6">
                     <h2 className="text-3xl font-bold text-gray-800 text-center">Sign Up</h2>
 

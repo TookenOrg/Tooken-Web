@@ -6,6 +6,7 @@ import { Navbar } from "@/components/navbar/navbar"
 const rem = REM({
   variable: "--font-rem",
   subsets: ["latin"],
+  weight: "300",
 });
 
 const geistSans = Geist({
@@ -31,10 +32,10 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body
-        className={`${geistSans.variable} ${geistMono.variable} ${rem.variable} antialiased`}
+        className={`${rem.variable} ${geistSans.variable} ${geistMono.variable} font-sans antialiased flex flex-col min-h-screen`}
       >
         <Navbar />
-        <main>
+        <main className="flex-1">
           {children}
         </main>
       </body>
