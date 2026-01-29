@@ -19,8 +19,6 @@ export async function signIn(payload: SignInPayload): Promise<SignInResponse> {
         skipAuth: true,
     });
 
-    console.log(rep.data)
-
     if (rep.data.token) localStorage.setItem("TOKEN", rep.data.token);
     if (rep.data.refreshToken) localStorage.setItem("REFRESH_TOKEN", rep.data.refreshToken);
 

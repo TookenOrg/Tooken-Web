@@ -6,6 +6,8 @@ import { TokenAmountSelector } from "@/components/purchase/form/TokenAmountSelec
 import { PurchaseSummary } from "@/components/purchase/form/PurchaseSummary"
 import { BuyTokensCTA } from "@/components/purchase/form/BuyTokensCTA"
 import { RealEstate } from '@/types/real-estate/RealEstate'
+import { toast } from "sonner"
+import { PlaceOrder } from "@/lib/api/real-estate/real-estate";
 
 type PurchaseContentProps = {
     estate: RealEstate
@@ -14,32 +16,38 @@ type PurchaseContentProps = {
 export function PurchaseContent({ estate }: PurchaseContentProps) {
     const [tokenAmount, setTokenAmount] = useState(1)
     const [currentStep, setCurrentStep] = useState(0)
+    const [isLoading, setIsLoading] = useState(false)
 
-    const handleBuy = () => {
-        // Passer à l'étape suivante
-        if (currentStep < 2) {
-            setCurrentStep(currentStep + 1)
+    const handleBuy = async () => {
+        setIsLoading(true)
+        try {
+            const response = await PlaceOrder({
+                realEstateId: estate.id,
+                tokenQuantity: tokenAmount,
+            })
+            if (response.status === 201) {
+                setCurrentStep(1)
+            }
+
+            toast.error(response.message)
+        } catch (error: any) {
+            toast.error(error)
+        } finally {
+            setIsLoading(false)
         }
-        // Ici vous pouvez ajouter la logique d'achat
-        console.log('Achat de', tokenAmount, 'tokens')
     }
 
-    const steps: Array<{ title: string; status: "completed" | "active" | "upcoming" }> = [
-        { title: "Order", status: currentStep > 0 ? "completed" : "active" },
-        { title: "Sent", status: currentStep === 1 ? "active" : currentStep > 1 ? "completed" : "upcoming" },
-        { title: "Confirmed", status: currentStep === 2 ? "active" : "upcoming" },
-    ]
     return (
         <>
             {/* Stepper */}
             <section>
-                <HorizontalPurchaseStepper steps={steps} />
+                <HorizontalPurchaseStepper currentStep={currentStep} />
             </section>
 
-            {/* Purchase area - prend toute la hauteur disponible */}
+            {/* Purchase area */}
             <section className="flex-1 grid grid-cols-1 lg:grid-cols-3 gap-6 md:gap-8 pb-6">
 
-                {/* Sélecteur de tokens */}
+                {/* token selector */}
                 <div className="lg:col-span-2">
                     <TokenAmountSelector
                         asset={estate}
@@ -48,7 +56,6 @@ export function PurchaseContent({ estate }: PurchaseContentProps) {
                     />
                 </div>
 
-                {/* Récapitulatif - sticky sur desktop */}
                 <div className="lg:col-span-1">
                     <PurchaseSummary
                         asset={estate}
@@ -58,12 +65,12 @@ export function PurchaseContent({ estate }: PurchaseContentProps) {
 
             </section>
 
-            {/* CTA - En bas sur desktop, fixed sur mobile */}
             <section className="max-w-6xl mx-auto px-4 w-full md:pb-10">
                 <BuyTokensCTA
                     asset={estate}
                     tokenAmount={tokenAmount}
                     onBuy={handleBuy}
+                    isLoading={isLoading}
                 />
             </section>
         </>

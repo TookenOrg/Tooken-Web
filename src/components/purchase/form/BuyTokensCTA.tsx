@@ -1,16 +1,18 @@
 'use client'
 
 import { Button } from '@/components/ui/button'
-import { ShoppingCart } from 'lucide-react'
+import { Loader2, ShoppingCart } from 'lucide-react'
 import { RealEstate } from '@/types/real-estate/RealEstate'
 
 type BuyTokensCTAProps = {
     asset: RealEstate
     tokenAmount: number
     onBuy?: () => void
+    isLoading?: boolean
+    disabled?: boolean
 }
 
-export function BuyTokensCTA({ asset, tokenAmount, onBuy }: BuyTokensCTAProps) {
+export function BuyTokensCTA({ asset, tokenAmount, onBuy, isLoading = false, disabled = false }: BuyTokensCTAProps) {
     const total = asset.configuration.price_per_share * tokenAmount * 1.02 // avec frais
 
     const handleBuy = () => {
@@ -27,11 +29,21 @@ export function BuyTokensCTA({ asset, tokenAmount, onBuy }: BuyTokensCTAProps) {
             <div className="hidden md:block">
                 <Button
                     size="lg"
-                    className="w-full h-14 text-lg font-semibold"
+                    className="w-full h-14 text-lg font-semibold bg-yellow-500 hover:bg-yellow-600 "
                     onClick={handleBuy}
+                    disabled={disabled || isLoading}
                 >
-                    <ShoppingCart className="mr-2 h-5 w-5" />
-                    Buy for {total.toFixed(2)}€
+                    {isLoading ? (
+                        <>
+                            <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+                            Processing...
+                        </>
+                    ) : (
+                        <>
+                            <ShoppingCart className="mr-2 h-5 w-5" />
+                            Buy for {total.toFixed(2)}€
+                        </>
+                    )}
                 </Button>
             </div>
 
@@ -42,10 +54,19 @@ export function BuyTokensCTA({ asset, tokenAmount, onBuy }: BuyTokensCTAProps) {
                     className="w-full h-14 text-lg font-semibold"
                     onClick={handleBuy}
                 >
-                    <ShoppingCart className="mr-2 h-5 w-5" />
-                    Buy {tokenAmount} token{tokenAmount > 1 ? 's' : ''} • {total.toFixed(2)}€
+                    {isLoading ? (
+                        <>
+                            <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+                            Processing...
+                        </>
+                    ) : (
+                        <>
+                            <ShoppingCart className="mr-2 h-5 w-5" />
+                            Buy {tokenAmount} token{tokenAmount > 1 ? 's' : ''} • {total.toFixed(2)}€
+                        </>
+                    )}
                 </Button>
-            </div>
+            </div >
 
             <div className="md:hidden h-24" />
         </>
