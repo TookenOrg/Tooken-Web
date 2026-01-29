@@ -9,7 +9,6 @@ type Props = {
     estate: RealEstate
 }
 
-// Génère données avec intérêts composés
 function generateCompoundData(initialInvestment: number, yieldPct: number, years: number) {
     const data = []
     let value = initialInvestment
@@ -56,7 +55,7 @@ export function RealEstateInvestmentChart({ estate }: Props) {
                     />
                 </div>
 
-                {/* Slider durée */}
+                {/* Slider duration */}
                 <div className="flex flex-col md:flex-1">
                     <label className="font-medium text-gray-700 mb-1">
                         Duration: {years} years
@@ -73,7 +72,7 @@ export function RealEstateInvestmentChart({ estate }: Props) {
                 </div>
             </div>
 
-            {/* Graphique */}
+            {/* Graph */}
             <ResponsiveContainer width="100%" height={300}>
                 <AreaChart data={data} margin={{ top: 10, right: 20, bottom: 10, left: 0 }}>
                     <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
@@ -82,7 +81,6 @@ export function RealEstateInvestmentChart({ estate }: Props) {
                     <YAxis
                         mirror
                         tickFormatter={(value) => formatCurrency(value, 'EUR')}
-                        // label={{ value: 'Value', angle: -90, position: 'insideLeft', offset: 10 }}
                         tick={{ fontSize: 12, fill: '#374151' }}
                     />
 
