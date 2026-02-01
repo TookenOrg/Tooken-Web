@@ -1,7 +1,7 @@
 import { RealEstate } from "@/types/real-estate/RealEstate"
 import { apiFetch } from "@/lib/apiClient"
 
-interface PlaceOrderPayload {
+interface SubscribeOrderPayload {
     realEstateId: number;
     tokenQuantity: number;
 }
@@ -11,7 +11,7 @@ interface Order {
     orderReference: string;
 }
 
-interface PlaceOrderResponse {
+interface SubscribeOrderResponse {
     orderReference?: string;
     message: string;
     status: number;
@@ -34,7 +34,7 @@ export async function getRealEstateById(id: string): Promise<RealEstate> {
     return rep
 }
 
-export async function PlaceOrder(request: PlaceOrderPayload): Promise<PlaceOrderResponse> {
+export async function IssuanceOrder(request: SubscribeOrderPayload): Promise<SubscribeOrderResponse> {
     try {
 
         await new Promise(resolve => setTimeout(resolve, 500))
@@ -53,7 +53,7 @@ export async function PlaceOrder(request: PlaceOrderPayload): Promise<PlaceOrder
             }
         }
 
-        const rep = await apiFetch("/assets/real-estate", {
+        const rep = await apiFetch("/assets/real-estate/issuance/orders", {
             method: "POST",
             body: JSON.stringify(request),
             skipAuth: false,

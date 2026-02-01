@@ -7,7 +7,7 @@ import { PurchaseSummary } from "@/components/purchase/form/PurchaseSummary"
 import { BuyTokensCTA } from "@/components/purchase/form/BuyTokensCTA"
 import { RealEstate } from '@/types/real-estate/RealEstate'
 import { toast } from "sonner"
-import { PlaceOrder } from "@/lib/api/real-estate/real-estate";
+import { IssuanceOrder } from "@/lib/api/real-estate/real-estate";
 
 type PurchaseContentProps = {
     estate: RealEstate
@@ -21,7 +21,7 @@ export function PurchaseContent({ estate }: PurchaseContentProps) {
     const handleBuy = async () => {
         setIsLoading(true)
         try {
-            const response = await PlaceOrder({
+            const response = await IssuanceOrder({
                 realEstateId: estate.id,
                 tokenQuantity: tokenAmount,
             })
