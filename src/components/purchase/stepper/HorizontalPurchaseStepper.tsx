@@ -1,8 +1,6 @@
 import { Check } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
-type StepStatus = 'completed' | 'active' | 'upcoming'
-
 type HorizontalPurchaseStepperProps = {
     currentStep: number
 }
@@ -10,57 +8,64 @@ type HorizontalPurchaseStepperProps = {
 export default function HorizontalPurchaseStepper({ currentStep }: HorizontalPurchaseStepperProps) {
 
     const steps: Array<{ title: string; status: "completed" | "active" | "upcoming" }> = [
-        { title: "Place Order", status: currentStep > 0 ? "completed" : "active" },
-        { title: "Sent", status: currentStep === 1 ? "active" : currentStep > 1 ? "completed" : "upcoming" },
-        { title: "Confirmed", status: currentStep === 2 ? "active" : currentStep > 2 ? "completed" : "upcoming" },
-        { title: "Payment", status: currentStep === 3 ? "active" : currentStep > 3 ? "completed" : "upcoming" },
-        { title: "Tokens transferred", status: currentStep === 4 ? "active" : currentStep > 4 ? "completed" : "upcoming" },
+        { title: "Place Order", status: currentStep >= 0 ? "completed" : "active" },
+        { title: "Sent to Blockchain", status: currentStep == 0 ? "active" : currentStep >= 1 ? "completed" : "upcoming" },
+        { title: "Confirmed", status: currentStep == 1 ? "active" : currentStep >= 2 ? "completed" : "upcoming" },
+        { title: "Tokens transferred", status: currentStep == 2 ? "active" : currentStep >= 3 ? "completed" : "upcoming" },
     ]
 
     return (
-        <div className="w-full flex justify-center py-4">
-            <div className="flex items-start justify-center gap-4 md:gap-8">
+        <div className="w-full flex justify-center py-6">
+            <div className="flex items-start justify-center">
                 {steps.map((step, index) => (
-                    <div key={index} className="flex items-center gap-4 md:gap-8">
+                    <div key={index} className="flex items-start">
                         {/* Step item */}
-                        <div className="flex flex-col items-center min-w-[80px] md:min-w-[100px]">
-                            {/* Circle with fixed size */}
-                            <div
-                                className={cn(
-                                    "w-10 h-10 md:w-8 md:h-8 rounded-full flex items-center justify-center border-2 transition-colors flex-shrink-0",
-                                    step.status === 'completed' && "bg-green-600 border-green-800 text-primary-foreground",
-                                    step.status === 'active' && "border-primary text-primary bg-background",
-                                    step.status === 'upcoming' && "border-gray-300 text-gray-400 bg-background"
+                        <div className="flex flex-col items-center" style={{ minWidth: '90px' }}>
+                            {/* Circle */}
+                            <div className="relative flex items-center justify-center">
+                                {/* Glow ring for active */}
+                                {step.status === 'active' && (
+                                    <span className="absolute inset-0 rounded-full animate-ping opacity-20 bg-primary" />
                                 )}
-                            >
-                                {step.status === 'completed' ? (
-                                    <Check className="w-5 h-5 md:w-6 md:h-6" />
-                                ) : (
-                                    <span className="text-sm md:text-base font-medium">{index + 1}</span>
-                                )}
+                                <div
+                                    className={cn(
+                                        "w-12 h-12 rounded-full flex items-center justify-center transition-all duration-300 font-semibold text-sm relative z-10",
+                                        step.status === 'completed' && "bg-emerald-500 text-white shadow-lg shadow-emerald-500/30",
+                                        step.status === 'active' && "bg-primary text-primary-foreground shadow-lg shadow-primary/40 ring-4 ring-primary/20",
+                                        step.status === 'upcoming' && "bg-muted text-muted-foreground"
+                                    )}
+                                >
+                                    {step.status === 'completed' ? (
+                                        <Check className="w-4 h-4 stroke-[2.5]" />
+                                    ) : (
+                                        <span>{index + 1}</span>
+                                    )}
+                                </div>
                             </div>
 
                             {/* Label */}
                             <p
                                 className={cn(
-                                    "mt-2 text-xs md:text-sm font-medium text-center whitespace-nowrap",
-                                    step.status === 'completed' && "text-primary",
+                                    "mt-2.5 text-xs font-medium text-center leading-tight max-w-[80px]",
+                                    step.status === 'completed' && "text-emerald-600",
                                     step.status === 'active' && "text-primary",
-                                    step.status === 'upcoming' && "text-gray-400"
+                                    step.status === 'upcoming' && "text-muted-foreground"
                                 )}
                             >
                                 {step.title}
                             </p>
                         </div>
 
-                        {/* Connector line */}
+                        {/* Connector */}
                         {index < steps.length - 1 && (
-                            <div
-                                className={cn(
-                                    "h-0.5 w-12 md:w-20 lg:w-10 self-start mt-5 md:mt-6 flex-shrink-0",
-                                    step.status === 'completed' ? "bg-green-600" : "bg-gray-300"
-                                )}
-                            />
+                            <div className="mt-[24px] mx-1 h-0.5 w-10 md:w-14 flex-shrink-0 rounded-full overflow-hidden bg-muted">
+                                <div
+                                    className={cn(
+                                        "h-full rounded-full transition-all duration-500",
+                                        step.status === 'completed' ? "w-full bg-emerald-500" : "w-0"
+                                    )}
+                                />
+                            </div>
                         )}
                     </div>
                 ))}

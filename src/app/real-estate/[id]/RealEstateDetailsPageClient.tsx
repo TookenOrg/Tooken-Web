@@ -12,9 +12,6 @@ import { RealEstatePurchaseCard } from "@/components/real-estate/details/RealEst
 import { RealEstateDescription } from "@/components/real-estate/details/RealEstateDescription"
 import { RealEstateInvestmentChart } from '@/components/real-estate/details/RealEstateInvestmentChart'
 
-
-
-
 type Props = { id: string }
 
 export default function RealEstateDetailsPageClient({ id }: Props) {
