@@ -6,7 +6,6 @@ type Props = {
 }
 
 export function RealEstateMedia({ estate }: Props) {
-    console.log(estate)
     return (
         <div className="relative aspect-[16/9] overflow-hidden rounded-xl bg-gray-100">
             {estate.imageurl ? (

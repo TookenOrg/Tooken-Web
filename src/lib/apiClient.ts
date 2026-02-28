@@ -1,5 +1,3 @@
-import Router from "next/router";
-
 const API_URL = process.env.NEXT_PUBLIC_API_URL;
 
 interface FetchOptions extends RequestInit {
@@ -29,7 +27,6 @@ export async function apiFetch(path: string, options: FetchOptions = {}) {
 
         if (res.status === 401 && !skipAuth && typeof window !== "undefined") {
             localStorage.removeItem("TOKEN");
-            Router.push("/login"); // redirige vers login
         }
 
         throw new Error(message);

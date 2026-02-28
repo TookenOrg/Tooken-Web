@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { REM, Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { Navbar } from "@/components/navbar/navbar"
+import { Toaster } from "sonner"
 
 const rem = REM({
   variable: "--font-rem",
@@ -32,11 +33,12 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body
-        className={`${rem.variable} ${geistSans.variable} ${geistMono.variable} font-sans antialiased flex flex-col min-h-screen`}
+        className={`${rem.variable} ${geistSans.variable} ${geistMono.variable} font-sans antialiased flex flex-col h-screen overflow-hidden`}
       >
         <Navbar />
-        <main className="flex-1">
+        <main className="flex-1 overflow-y-auto mt-16">
           {children}
+          <Toaster position="bottom-left" richColors />
         </main>
       </body>
     </html>

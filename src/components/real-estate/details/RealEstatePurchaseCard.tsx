@@ -1,6 +1,7 @@
 'use client'
 
 import { Button } from '@/components/ui/button'
+import { useRouter } from 'next/navigation'
 import { FavoriteButton } from '@/components/marketing/FavoriteButton'
 import { SocialMediaShare } from '@/components/marketing/SocialMediaShare'
 import type { RealEstate } from '@/types/real-estate/RealEstate'
@@ -10,6 +11,8 @@ type Props = {
 }
 
 export function RealEstatePurchaseCard({ estate }: Props) {
+    const router = useRouter()
+
     return (
         <div className="rounded-xl border bg-white p-6 space-y-6 shadow-sm flex flex-col">
             <div className="flex justify-between items-start">
@@ -30,7 +33,9 @@ export function RealEstatePurchaseCard({ estate }: Props) {
             </div>
 
             {/* CTA Buy token */}
-            <Button className="w-full bg-yellow-500 hover:bg-yellow-600 text-white font-semibold py-3 rounded-lg transition">
+            <Button
+                className="w-full bg-yellow-500 hover:bg-yellow-600 text-white font-semibold py-3 rounded-lg transition"
+                onClick={() => router.push(`/real-estate/${estate.id}/buy`)}>
                 Buy tokens
             </Button>
 

@@ -10,7 +10,6 @@ export async function getActiveRealEstate(): Promise<RealEstate[]> {
 }
 
 export async function getRealEstateById(id: string): Promise<RealEstate> {
-    console.log(id)
     const rep = await apiFetch("/assets/real-estates/" + id, {
         method: "GET",
         skipAuth: true,

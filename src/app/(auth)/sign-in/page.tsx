@@ -29,7 +29,7 @@ export default function SignInPage() {
         setIsLoading(true);
 
         try {
-            const res = await signIn({
+            await signIn({
                 email: data.email,
                 password: data.password,
             });
