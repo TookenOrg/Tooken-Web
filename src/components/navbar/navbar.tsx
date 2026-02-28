@@ -1,5 +1,6 @@
 "use client"
 
+import { useEffect, useState } from "react"
 import Link from "next/link"
 import Image from "next/image"
 import { REM } from "next/font/google"
@@ -11,9 +12,10 @@ import {
 } from "@components/ui/dropdown-menu"
 import { Button } from "@components/ui/button"
 import { usePathname } from 'next/navigation'
+import Cookies from "js-cookie"
 
 const roboto = REM({ subsets: ["latin"], weight: "700", variable: "--font-roboto" })
-const isLoggedIn = false
+
 
 export function Navbar() {
 
@@ -24,6 +26,12 @@ export function Navbar() {
 
     if (hideNavbar) return null
 
+    const [isLoggedIn, setIsLoggedIn] = useState(false)
+
+    useEffect(() => {
+        const token = Cookies.get("TOKEN")
+        setIsLoggedIn(!!token)
+    }, [])
 
     const menuItems = isLoggedIn
         ? [

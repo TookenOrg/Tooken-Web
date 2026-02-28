@@ -19,7 +19,11 @@ export async function signIn(payload: SignInPayload): Promise<SignInResponse> {
         skipAuth: true,
     });
 
-    if (rep.data.token) localStorage.setItem("TOKEN", rep.data.token);
+    if (rep.data.token) {
+        localStorage.setItem("TOKEN", rep.data.token);
+        document.cookie = `TOKEN=${rep.data.token}; path=/; max-age=3600; SameSite=Strict`;
+    }
+
     if (rep.data.refreshToken) localStorage.setItem("REFRESH_TOKEN", rep.data.refreshToken);
 
     return rep;
@@ -29,6 +33,7 @@ export async function signIn(payload: SignInPayload): Promise<SignInResponse> {
 export function logout() {
     localStorage.removeItem("TOKEN");
     localStorage.removeItem("REFRESH_TOKEN");
+    document.cookie = "TOKEN=; path=/; max-age=0; SameSite=Strict";
 }
 
 // Refresh token
@@ -42,7 +47,11 @@ export async function refreshToken() {
         skipAuth: true,
     });
 
-    if (rep.token) localStorage.setItem("TOKEN", rep.token);
+    if (rep.token) {
+        localStorage.setItem("TOKEN", rep.token);
+        document.cookie = `TOKEN=${rep.token}; path=/; max-age=3600; SameSite=Strict`;
+    }
+
     if (rep.refreshToken) localStorage.setItem("REFRESH_TOKEN", rep.refreshToken);
 
     return rep;

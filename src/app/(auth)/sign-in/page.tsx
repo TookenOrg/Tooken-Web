@@ -6,6 +6,8 @@ import { signIn } from "@/lib/api/auth/auth";
 import { Button } from "@/components/ui/button"
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { useSearchParams } from "next/navigation"
+import { getSafeCallbackUrl } from "@/lib/url"
 
 type SignInFormValues = {
     email: string
@@ -24,6 +26,8 @@ export default function SignInPage() {
         mode: "onChange"
     })
 
+    const searchParams = useSearchParams()
+
     const onSubmit = async (data: SignInFormValues) => {
         setError(null);
         setIsLoading(true);
@@ -36,7 +40,8 @@ export default function SignInPage() {
 
             reset();
 
-            router.push("/")
+            const callbackUrl = getSafeCallbackUrl(searchParams.get("callbackUrl"));
+            router.push(callbackUrl);
 
         } catch (err) {
             if (err instanceof Error) {
