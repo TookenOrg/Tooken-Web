@@ -1,4 +1,4 @@
-import type { IssuanceOrder, KycVerification } from "@/lib/api/types";
+import type { IssuanceOrder, KycVerification, Role } from "@/lib/api/types";
 import { addDecimal } from "@/lib/format";
 
 /** Back-office views of the order book, grouped by what operations must do next. */
@@ -70,6 +70,7 @@ export function bucketCounts(
 /** Identity of an investor as known from their KYC filings. */
 export type InvestorInfo = {
   userId: number;
+  role?: Role;
   fullName?: string;
   email?: string;
   countryCode?: string;
@@ -90,6 +91,7 @@ export function investorDirectory(
   for (const f of sorted) {
     map.set(f.user_id, {
       userId: f.user_id,
+      role: f.user_role,
       fullName: f.declared_full_name,
       email: f.email,
       countryCode: f.declared_country_code,

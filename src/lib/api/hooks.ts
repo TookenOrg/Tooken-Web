@@ -302,9 +302,11 @@ export function useMyKycOnChain(refetchInterval: number | false = false) {
 // --- Users -----------------------------------------------------------------
 
 export function useUpdateUserRole() {
+  const qc = useQueryClient();
   return useMutation({
     mutationFn: (v: { userId: number; role: Role }) =>
       usersApi.updateRole(v.userId, v.role),
+    onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.kycAll }),
   });
 }
 

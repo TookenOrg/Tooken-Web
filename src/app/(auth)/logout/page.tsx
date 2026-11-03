@@ -1,18 +1,16 @@
 "use client";
 
 import { Loader2 } from "lucide-react";
-import { useRouter } from "next/navigation";
 import { useEffect } from "react";
 import { useSession } from "@/lib/auth/session-context";
 
 export default function LogoutPage() {
-  const router = useRouter();
   const { signOut } = useSession();
 
   useEffect(() => {
     signOut();
-    router.replace("/sign-in");
-  }, [signOut, router]);
+    window.location.replace("/");
+  }, [signOut]);
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-ink text-white/70">

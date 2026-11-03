@@ -1549,6 +1549,11 @@ export interface components {
             verification_status?: string;
             /** @description Additional message or reason for the verification status */
             verification_message?: string;
+            /**
+             * @description Current account role, read from the user rather than the filing.
+             * @enum {string}
+             */
+            user_role?: "USER" | "MANAGER" | "ADMIN";
             email: string;
             /**
              * Format: date-time

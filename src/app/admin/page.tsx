@@ -1,5 +1,6 @@
 "use client";
 
+import { useQueries } from "@tanstack/react-query";
 import {
   Activity,
   ArrowRight,
@@ -10,6 +11,7 @@ import {
   Clock,
   FileCheck2,
   Landmark,
+  RefreshCw,
   Rocket,
   Unlock,
   Wallet,
@@ -35,7 +37,9 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { kycApi } from "@/lib/api/endpoints";
 import {
+  queryKeys,
   useHealth,
   useIssuers,
   useKycList,
@@ -50,6 +54,7 @@ import {
   formatNumber,
   formatRelative,
 } from "@/lib/format";
+import { needsOnChainSync } from "@/lib/kyc-review";
 import { countryName } from "@/lib/reference";
 import { isOrderSettled } from "@/lib/status";
 import { cn } from "@/lib/utils";
@@ -103,7 +108,17 @@ export default function AdminOverviewPage() {
   const estates = useRealEstates();
   const issuers = useIssuers();
   const orders = useOrders();
-  const kyc = useKycList({ status: "submitted" }, isAdmin);
+  const kyc = useKycList({}, isAdmin);
+  // The list does not include on-chain status, so read approved file details.
+  const approvedKyc = isAdmin
+    ? (kyc.data ?? []).filter((k) => k.status === "approved")
+    : [];
+  const syncDetails = useQueries({
+    queries: approvedKyc.map((k) => ({
+      queryKey: queryKeys.kyc(k.id),
+      queryFn: () => kycApi.get(k.id),
+    })),
+  });
 
   const assets = (estates.data ?? []).filter((r) => r.status !== "cancelled");
   const allOrders = [...(orders.data ?? [])].sort((a, b) =>
@@ -131,7 +146,13 @@ export default function AdminOverviewPage() {
   const activeIssuers = (issuers.data ?? []).filter(
     (i) => i.status === "active",
   ).length;
-  const pendingKyc = kyc.data ?? [];
+  const pendingKyc = (kyc.data ?? []).filter((k) => k.status === "submitted");
+  const syncKyc = syncDetails.flatMap((q) =>
+    q.data && needsOnChainSync(q.data) === true ? [q.data] : [],
+  );
+  const kycError =
+    (isAdmin && kyc.isError ? kyc.error : null) ??
+    syncDetails.find((q) => q.isError)?.error;
 
   const actions: Action[] = [
     ...awaiting.map((o) => ({
@@ -152,6 +173,14 @@ export default function AdminOverviewPage() {
           detail: `${countryName(k.declared_country_code)} · submitted ${formatRelative(k.submitted_at)}`,
         }))
       : []),
+    ...syncKyc.map((k) => ({
+      key: `sync-kyc-${k.id}`,
+      href: `/admin/compliance/${k.id}`,
+      icon: RefreshCw,
+      tone: "bg-cyan-50 text-cyan-700",
+      title: `Sync KYC · ${k.declared_full_name ?? k.email ?? `File #${k.id}`}`,
+      detail: "Approved. Register the investor on-chain to enable investing.",
+    })),
     ...drafts.map((r) => ({
       key: `draft-${r.id}`,
       href: `/admin/assets/${r.id}`,
@@ -302,8 +331,19 @@ export default function AdminOverviewPage() {
                   ) : null
                 }
               />
-              {estates.isLoading || orders.isLoading ? (
+              {estates.isLoading ||
+              orders.isLoading ||
+              (isAdmin && kyc.isLoading) ||
+              syncDetails.some((q) => q.isLoading) ? (
                 <TableSkeleton rows={3} cols={1} />
+              ) : kycError ? (
+                <ErrorState
+                  error={kycError}
+                  onRetry={() => {
+                    kyc.refetch();
+                    for (const q of syncDetails) q.refetch();
+                  }}
+                />
               ) : actions.length === 0 ? (
                 <EmptyState
                   icon={CheckCircle2}

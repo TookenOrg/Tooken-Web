@@ -63,6 +63,9 @@ const roleMeta = (role: MaybeRole) =>
   ROLES.find((r) => r.value === role) ?? ROLES[0];
 
 function RoleBadge({ role }: { role: MaybeRole }) {
+  if (!role) {
+    return <StatusBadge tone="neutral">Unavailable</StatusBadge>;
+  }
   const meta = roleMeta(role);
   return <StatusBadge tone={meta.tone}>{meta.label}</StatusBadge>;
 }
@@ -83,7 +86,7 @@ export default function UsersPage() {
   const [role, setRole] = useState<Role>("MANAGER");
   const [query, setQuery] = useState("");
   const [confirming, setConfirming] = useState(false);
-  // The API does not list roles: show the ones changed from this page.
+  // Keep successful role changes visible while the directory refreshes.
   const [changed, setChanged] = useState<Map<number, User>>(new Map());
 
   const id = Number.parseInt(userId, 10);
@@ -192,7 +195,7 @@ export default function UsersPage() {
               </TableHeader>
               <TableBody>
                 {rows.map((d) => {
-                  const updated = changed.get(d.userId);
+                  const currentRole = changed.get(d.userId)?.role ?? d.role;
                   return (
                     <TableRow key={d.userId}>
                       <TableCell className="text-muted-foreground tabular">
@@ -210,13 +213,7 @@ export default function UsersPage() {
                         {d.countryCode ? countryName(d.countryCode) : "—"}
                       </TableCell>
                       <TableCell className="hidden sm:table-cell">
-                        {updated ? (
-                          <RoleBadge role={updated.role} />
-                        ) : (
-                          <span className="text-xs text-muted-foreground">
-                            Unchanged
-                          </span>
-                        )}
+                        <RoleBadge role={currentRole} />
                       </TableCell>
                       <TableCell className="text-right">
                         <Button

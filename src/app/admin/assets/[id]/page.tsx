@@ -12,7 +12,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { toast } from "sonner";
 import { ConfirmDialog } from "@/components/app/confirm-dialog";
 import { HashValue } from "@/components/app/hash-value";
@@ -26,7 +26,6 @@ import {
 } from "@/components/app/status-badges";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
-import { Progress } from "@/components/ui/progress";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { errorMessage } from "@/lib/api/client";
 import {
@@ -51,6 +50,7 @@ import { offeringTerms } from "@/lib/offering-terms";
 import { countryName, estateTypeLabel } from "@/lib/reference";
 import { AssetLifecycle } from "../_components/asset-lifecycle";
 import { AssetOrders } from "../_components/asset-orders";
+import { PublishProgress } from "../_components/publish-progress";
 
 export default function AssetDetailPage() {
   const params = useParams<{ id: string }>();
@@ -303,48 +303,6 @@ export default function AssetDetailPage() {
         onConfirm={runDelete}
       />
     </>
-  );
-}
-
-const PUBLISH_STEPS = [
-  "Checking asset completeness",
-  "Deploying ERC-3643 token suite",
-  "Binding the token to the asset",
-];
-
-function PublishProgress() {
-  const [elapsed, setElapsed] = useState(0);
-  useEffect(() => {
-    const start = Date.now();
-    const t = setInterval(() => setElapsed(Date.now() - start), 200);
-    return () => clearInterval(t);
-  }, []);
-  const step = elapsed < 800 ? 0 : elapsed < 4500 ? 1 : 2;
-  const pct = Math.min(92, (elapsed / 6000) * 100);
-  return (
-    <Panel className="border-amber-200">
-      <output aria-live="polite" className="block">
-        <PanelBody className="space-y-3">
-          <div className="flex items-center gap-3">
-            <Loader2 className="size-5 animate-spin text-amber-600" />
-            <div>
-              <p className="text-sm font-semibold text-ink">
-                Deploying ERC-3643 token…
-              </p>
-              <p className="text-xs text-muted-foreground">
-                {PUBLISH_STEPS[step]}. This usually takes a few seconds; keep
-                this page open.
-              </p>
-            </div>
-          </div>
-          <Progress
-            value={pct}
-            className="h-1.5 bg-amber-100 [&>div]:bg-brand"
-            aria-label="Deployment progress"
-          />
-        </PanelBody>
-      </output>
-    </Panel>
   );
 }
 

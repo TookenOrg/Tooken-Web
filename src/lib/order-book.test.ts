@@ -110,6 +110,24 @@ describe("filterOrders", () => {
 });
 
 describe("investorDirectory", () => {
+  it("uses the current account role without assuming an unknown role is an investor", () => {
+    const filing = {
+      id: 1,
+      user_id: 3,
+      status: "approved",
+      declared_full_name: "Account",
+      declared_country_code: "LU",
+      email: "account@example.test",
+      created_at: "2026-01-01T00:00:00Z",
+      updated_at: "2026-01-01T00:00:00Z",
+    };
+    for (const role of ["USER", "MANAGER", "ADMIN", undefined] as const) {
+      expect(
+        investorDirectory([{ ...filing, user_role: role }]).get(3)?.role,
+      ).toBe(role);
+    }
+  });
+
   it("keeps the most recent filing of each user", () => {
     const base: Omit<KycVerification, "id" | "submitted_at" | "email"> = {
       user_id: 3,
