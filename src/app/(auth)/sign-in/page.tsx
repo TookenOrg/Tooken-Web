@@ -1,130 +1,204 @@
-'use client'
+"use client";
 
-import { useForm } from "react-hook-form"
-import { Input } from "@/components/ui/input"
-import { signIn } from "@/lib/api/auth/auth";
-import { Button } from "@/components/ui/button"
-import { useState } from "react";
-import { useRouter } from "next/navigation";
-import { useSearchParams } from "next/navigation"
-import { getSafeCallbackUrl } from "@/lib/url"
+import { zodResolver } from "@hookform/resolvers/zod";
+import { AlertCircle, Eye, EyeOff, Loader2, UserRound } from "lucide-react";
+import Link from "next/link";
+import { useRouter, useSearchParams } from "next/navigation";
+import { Suspense, useState } from "react";
+import { useForm } from "react-hook-form";
+import { z } from "zod";
+import { FormField } from "@/components/app/form-field";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { errorMessage } from "@/lib/api/client";
+import { homeFor } from "@/lib/auth/routes";
+import { useSession } from "@/lib/auth/session-context";
+import {
+  AuthShell,
+  PASSWORD_MAX_BYTES,
+  resolveRedirect,
+  utf8Length,
+} from "../_components/auth-shell";
 
-type SignInFormValues = {
-    email: string
-    password: string
+const schema = z.object({
+  email: z.email("Enter a valid email address."),
+  password: z
+    .string()
+    .min(1, "Password is required.")
+    .refine((v) => utf8Length(v) <= PASSWORD_MAX_BYTES, {
+      message: "Password is too long.",
+    }),
+});
+
+type Values = z.infer<typeof schema>;
+
+const DEMO_ACCOUNTS = [
+  { label: "Investor", email: "claire@invest.lu", password: "Investor1234!" },
+  { label: "Administrator", email: "admin@tooken.io", password: "Admin1234!" },
+];
+
+function SignInForm() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const { signIn } = useSession();
+  const [error, setError] = useState<string | null>(null);
+  const [showPassword, setShowPassword] = useState(false);
+
+  const {
+    register,
+    handleSubmit,
+    setValue,
+    formState: { errors, isSubmitting },
+  } = useForm<Values>({
+    resolver: zodResolver(schema),
+    defaultValues: { email: "", password: "" },
+  });
+
+  const onSubmit = async (values: Values) => {
+    setError(null);
+    try {
+      const user = await signIn(values.email.trim(), values.password);
+      router.replace(
+        resolveRedirect(searchParams.get("callbackUrl"), homeFor(user.role)),
+      );
+    } catch (err) {
+      setError(errorMessage(err));
+    }
+  };
+
+  const fillDemo = (email: string, password: string) => {
+    setValue("email", email, { shouldValidate: true });
+    setValue("password", password, { shouldValidate: true });
+    setError(null);
+  };
+
+  const signUpHref = searchParams.get("callbackUrl")
+    ? `/sign-up?callbackUrl=${encodeURIComponent(searchParams.get("callbackUrl") ?? "")}`
+    : "/sign-up";
+
+  return (
+    <>
+      <form className="space-y-5" onSubmit={handleSubmit(onSubmit)} noValidate>
+        {error ? (
+          <Alert variant="destructive">
+            <AlertCircle className="size-4" />
+            <AlertDescription>{error}</AlertDescription>
+          </Alert>
+        ) : null}
+
+        <FormField
+          label="Email address"
+          htmlFor="email"
+          error={errors.email?.message}
+        >
+          <Input
+            id="email"
+            type="email"
+            autoComplete="email"
+            placeholder="name@institution.com"
+            aria-invalid={!!errors.email}
+            {...register("email")}
+          />
+        </FormField>
+
+        <FormField
+          label="Password"
+          htmlFor="password"
+          error={errors.password?.message}
+        >
+          <div className="relative">
+            <Input
+              id="password"
+              type={showPassword ? "text" : "password"}
+              autoComplete="current-password"
+              aria-invalid={!!errors.password}
+              className="pr-10"
+              {...register("password")}
+            />
+            <button
+              type="button"
+              onClick={() => setShowPassword((v) => !v)}
+              className="absolute inset-y-0 right-0 flex w-10 items-center justify-center rounded-r-md text-muted-foreground hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              aria-label={showPassword ? "Hide password" : "Show password"}
+            >
+              {showPassword ? (
+                <EyeOff className="size-4" />
+              ) : (
+                <Eye className="size-4" />
+              )}
+            </button>
+          </div>
+        </FormField>
+
+        <Button
+          type="submit"
+          className="h-10 w-full bg-brand text-brand-foreground hover:bg-brand-light"
+          disabled={isSubmitting}
+        >
+          {isSubmitting ? (
+            <>
+              <Loader2 className="animate-spin" /> Signing in…
+            </>
+          ) : (
+            "Sign in"
+          )}
+        </Button>
+      </form>
+
+      <section
+        aria-label="Demo accounts"
+        className="mt-6 rounded-md border border-dashed border-border bg-muted/40 p-3"
+      >
+        <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+          Demo environment — click to fill
+        </p>
+        <ul className="mt-2 grid gap-1.5 sm:grid-cols-2">
+          {DEMO_ACCOUNTS.map((a) => (
+            <li key={a.email}>
+              <button
+                type="button"
+                onClick={() => fillDemo(a.email, a.password)}
+                className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs transition hover:bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              >
+                <UserRound
+                  className="size-3.5 shrink-0 text-muted-foreground"
+                  aria-hidden
+                />
+                <span className="min-w-0">
+                  <span className="block font-medium text-ink">{a.label}</span>
+                  <span className="block truncate font-mono text-[11px] text-muted-foreground">
+                    {a.email}
+                  </span>
+                </span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      </section>
+
+      <p className="mt-8 border-t border-border pt-6 text-center text-sm text-muted-foreground">
+        New to Tooken?{" "}
+        <Link
+          href={signUpHref}
+          className="font-medium text-ink underline-offset-4 hover:underline"
+        >
+          Open an account
+        </Link>
+      </p>
+    </>
+  );
 }
 
 export default function SignInPage() {
-
-    const router = useRouter();
-
-    const [error, setError] = useState<string | null>(null);
-    const [isLoading, setIsLoading] = useState(false);
-
-
-    const { register, handleSubmit, reset, formState: { errors, isValid } } = useForm<SignInFormValues>({
-        mode: "onChange"
-    })
-
-    const searchParams = useSearchParams()
-
-    const onSubmit = async (data: SignInFormValues) => {
-        setError(null);
-        setIsLoading(true);
-
-        try {
-            await signIn({
-                email: data.email,
-                password: data.password,
-            });
-
-            reset();
-
-            const callbackUrl = getSafeCallbackUrl(searchParams.get("callbackUrl"));
-            router.push(callbackUrl);
-
-        } catch (err) {
-            if (err instanceof Error) {
-                setError(err.message);
-            } else {
-                setError("Unexpected error");
-            }
-        } finally {
-            setIsLoading(false);
-        }
-    };
-
-
-    return (
-        <div className="flex min-h-screen flex-col md:flex-row bg-[#2D2B3D]">
-            {/* Partie gauche : branding */}
-            <div className="md:w-3/5 w-full flex flex-col items-center justify-center text-white p-12 md:p-16 bg-animated-gradient-dark">
-                <h1 className="text-5xl font-bold mb-6 text-center md:text-left">
-                    Tooken
-                </h1>
-
-                <p className="text-lg max-w-md text-center md:text-left">
-                    Connectez-vous pour accéder à votre tableau de bord et gérer vos NFTs Soulbound.
-                </p>
-
-                <img
-                    src="/logo-transparent_3000.png"
-                    alt="Tooken Logo"
-                    className="mt-10 w-48 md:w-64"
-                />
-            </div>
-
-            {/* Partie droite : formulaire */}
-            <div className="md:w-2/5 w-full flex items-center justify-center p-12 md:p-16 bg-white bg-animated-gradient-white">
-                <div className="w-full max-w-md space-y-6">
-                    <h2 className="text-3xl font-bold text-gray-800 text-center">Sign In</h2>
-
-                    <form className="flex flex-col gap-4" onSubmit={handleSubmit(onSubmit)}>
-                        {/* Email */}
-                        <div className="flex flex-col">
-                            <Input
-                                type="email"
-                                placeholder="Email"
-                                {...register("email", {
-                                    required: "Email is required",
-                                    pattern: { value: /^\S+@\S+$/i, message: "Invalid email address" }
-                                })}
-                                className={errors.email ? "border-red-500 focus:border-red-500 focus:ring-1 focus:ring-red-500 rounded-lg" : "rounded-lg"}
-                            />
-                            {errors.email && (
-                                <span className="text-red-500 text-sm mt-1">{errors.email.message}</span>
-                            )}
-                        </div>
-
-                        {/* Password */}
-                        <div className="flex flex-col">
-                            <Input
-                                type="password"
-                                placeholder="Password"
-                                {...register("password", { required: "Password is required", minLength: { value: 6, message: "Minimum 6 characters" } })}
-                                className={errors.password ? "border-red-500 focus:border-red-500 focus:ring-1 focus:ring-red-500 rounded-lg" : "rounded-lg"}
-                            />
-                            {errors.password && (
-                                <span className="text-red-500 text-sm mt-1">{errors.password.message}</span>
-                            )}
-                        </div>
-
-                        {error && (
-                            <p className="text-sm text-red-500 mt-2">
-                                {error}
-                            </p>
-                        )}
-
-                        <Button type="submit" disabled={!isValid || isLoading}>
-                            {isLoading ? "Connexion..." : "Sign In"}
-                        </Button>
-                    </form>
-
-                    <p className="text-sm text-center text-gray-600">
-                        Don't have an account? <a href="/sign-up" className="text-blue-600 font-medium">Sign Up</a>
-                    </p>
-                </div>
-            </div>
-        </div>
-    )
+  return (
+    <AuthShell
+      title="Sign in"
+      subtitle="Access your investor workspace or the issuer back office."
+    >
+      <Suspense fallback={null}>
+        <SignInForm />
+      </Suspense>
+    </AuthShell>
+  );
 }

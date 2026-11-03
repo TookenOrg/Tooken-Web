@@ -1,13 +1,9 @@
 @import "tailwindcss";
-
-@plugin "tailwindcss-animate";
 @import "tw-animate-css";
 
-@custom-variant dark (&:is(.dark *));
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@plugin "tailwindcss-animate";
 
+@custom-variant dark (&:is(.dark *));
 
 @theme inline {
   --color-background: var(--background);
@@ -48,6 +44,16 @@
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
   --radius-xl: calc(var(--radius) + 4px);
+
+  /* Tooken brand */
+  --color-ink: #2d2b3d;
+  --color-ink-2: #262435;
+  --color-ink-3: #1f1d2b;
+  --color-brand: #f59e0b;
+  --color-brand-light: #fbbf24;
+  --color-brand-foreground: #1f1d2b;
+  --color-signal: #22d3ee;
+  --font-display: var(--font-rem);
 }
 
 :where(button, [role="button"]):not([disabled]) {
@@ -55,38 +61,38 @@
 }
 
 :root {
-  --radius: 0.625rem;
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.145 0 0);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.145 0 0);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.205 0 0);
-  --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.97 0 0);
-  --secondary-foreground: oklch(0.205 0 0);
-  --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.556 0 0);
-  --accent: oklch(0.97 0 0);
-  --accent-foreground: oklch(0.205 0 0);
-  --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.922 0 0);
-  --input: oklch(0.922 0 0);
-  --ring: oklch(0.708 0 0);
-  --chart-1: oklch(0.646 0.222 41.116);
-  --chart-2: oklch(0.6 0.118 184.704);
-  --chart-3: oklch(0.398 0.07 227.392);
-  --chart-4: oklch(0.828 0.189 84.429);
-  --chart-5: oklch(0.769 0.188 70.08);
-  --sidebar: oklch(0.985 0 0);
-  --sidebar-foreground: oklch(0.145 0 0);
-  --sidebar-primary: oklch(0.205 0 0);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.97 0 0);
-  --sidebar-accent-foreground: oklch(0.205 0 0);
-  --sidebar-border: oklch(0.922 0 0);
-  --sidebar-ring: oklch(0.708 0 0);
+  --radius: 0.5rem;
+  --background: #f5f5f8;
+  --foreground: #1a1826;
+  --card: #ffffff;
+  --card-foreground: #1a1826;
+  --popover: #ffffff;
+  --popover-foreground: #1a1826;
+  --primary: #2d2b3d;
+  --primary-foreground: #ffffff;
+  --secondary: #efeef4;
+  --secondary-foreground: #2d2b3d;
+  --muted: #f1f0f5;
+  --muted-foreground: #6b6880;
+  --accent: #f3f2f8;
+  --accent-foreground: #2d2b3d;
+  --destructive: #dc2626;
+  --border: #e4e3ec;
+  --input: #dcdae5;
+  --ring: #f59e0b;
+  --chart-1: #f59e0b;
+  --chart-2: #06b6d4;
+  --chart-3: #10b981;
+  --chart-4: #6366f1;
+  --chart-5: #2d2b3d;
+  --sidebar: #1f1d2b;
+  --sidebar-foreground: #c9c7d6;
+  --sidebar-primary: #f59e0b;
+  --sidebar-primary-foreground: #1f1d2b;
+  --sidebar-accent: #2d2b3d;
+  --sidebar-accent-foreground: #ffffff;
+  --sidebar-border: rgb(255 255 255 / 0.08);
+  --sidebar-ring: #f59e0b;
 }
 
 .dark {
@@ -129,8 +135,21 @@
   }
 
   body {
-    font-family: var(--font-rem);
-    @apply bg-background text-foreground;
+    @apply bg-background text-foreground font-sans;
+    font-feature-settings: "cv11", "ss01";
+  }
+
+  h1,
+  h2,
+  h3 {
+    font-family: var(--font-display);
+  }
+
+  /* The native WebKit clear button clashes with our input styling. */
+  input[type="search"]::-webkit-search-cancel-button,
+  input[type="search"]::-webkit-search-decoration {
+    -webkit-appearance: none;
+    appearance: none;
   }
 }
 
@@ -170,13 +189,11 @@
 
 .bg-animated-gradient-dark {
   background-image:
-    radial-gradient(circle at 1px 1px,
+    radial-gradient(
+      circle at 1px 1px,
       rgba(255, 255, 255, 0.035) 1px,
-      transparent 0),
-    linear-gradient(120deg,
-      #2D2B3D,
-      #23213a,
-      #3a3755);
+      transparent 0
+    ), linear-gradient(120deg, #2d2b3d, #23213a, #3a3755);
 
   background-size:
     48px 48px,
@@ -187,13 +204,11 @@
 
 .bg-animated-gradient-amber {
   background-image:
-    radial-gradient(circle at 1px 1px,
+    radial-gradient(
+      circle at 1px 1px,
       rgba(255, 255, 255, 0.08) 1px,
-      transparent 0),
-    linear-gradient(120deg,
-      #FBBF24,
-      #F59E0B,
-      #FB923C);
+      transparent 0
+    ), linear-gradient(120deg, #fbbf24, #f59e0b, #fb923c);
 
   background-size:
     48px 48px,
@@ -204,13 +219,8 @@
 
 .bg-animated-gradient-white {
   background-image:
-    radial-gradient(circle at 2px 2px,
-      rgba(0, 0, 0, 0.08) 2px,
-      transparent 0),
-    linear-gradient(120deg,
-      #ffffff,
-      #fffcf6,
-      #ffffff);
+    radial-gradient(circle at 2px 2px, rgba(0, 0, 0, 0.08) 2px, transparent 0),
+    linear-gradient(120deg, #ffffff, #fffcf6, #ffffff);
 
   background-size:
     48px 48px,
@@ -247,4 +257,20 @@
 
 .animate-float-slower {
   animation: float 18s ease-in-out infinite;
+}
+
+/* Tabular figures for amounts, quantities and references. */
+.tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bg-animated-gradient-dark,
+  .bg-animated-gradient-amber,
+  .bg-animated-gradient-white,
+  .animate-float-slow,
+  .animate-float-slower,
+  .animate-fade-up {
+    animation: none;
+  }
 }

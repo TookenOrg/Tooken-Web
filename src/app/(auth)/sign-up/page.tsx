@@ -1,103 +1,313 @@
-'use client'
+"use client";
 
-import { useForm } from "react-hook-form"
-import { Input } from "@/components/ui/input"
-import { Button } from "@/components/ui/button"
+import { zodResolver } from "@hookform/resolvers/zod";
+import { AlertCircle, Eye, EyeOff, Loader2 } from "lucide-react";
+import Link from "next/link";
+import { useRouter, useSearchParams } from "next/navigation";
+import { Suspense, useState } from "react";
+import { Controller, useForm } from "react-hook-form";
+import { z } from "zod";
+import { FormField } from "@/components/app/form-field";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Input } from "@/components/ui/input";
+import { errorMessage } from "@/lib/api/client";
+import { homeFor } from "@/lib/auth/routes";
+import { useSession } from "@/lib/auth/session-context";
+import {
+  AuthShell,
+  PASSWORD_MAX_BYTES,
+  resolveRedirect,
+  utf8Length,
+} from "../_components/auth-shell";
 
-type SignUpFormValues = {
-    fullName: string
-    email: string
-    password: string
+const name = (label: string) =>
+  z
+    .string()
+    .trim()
+    .min(1, `${label} is required.`)
+    .max(80, `${label} is too long.`);
+
+const schema = z
+  .object({
+    firstName: name("First name"),
+    lastName: name("Last name"),
+    email: z.email("Enter a valid email address."),
+    password: z
+      .string()
+      .min(8, "Use at least 8 characters.")
+      .refine((v) => utf8Length(v) <= PASSWORD_MAX_BYTES, {
+        message: `At most ${PASSWORD_MAX_BYTES} bytes (accented letters count double).`,
+      }),
+    confirmPassword: z.string().min(1, "Confirm your password."),
+    terms: z.boolean().refine((v) => v, {
+      message: "You must accept the terms to continue.",
+    }),
+  })
+  .refine((v) => v.password === v.confirmPassword, {
+    path: ["confirmPassword"],
+    message: "Passwords do not match.",
+  });
+
+type Values = z.infer<typeof schema>;
+
+function passwordStrength(pw: string): { score: number; label: string } {
+  let score = 0;
+  if (pw.length >= 8) score++;
+  if (pw.length >= 12) score++;
+  if (/[a-z]/.test(pw) && /[A-Z]/.test(pw)) score++;
+  if (/\d/.test(pw) && /[^A-Za-z0-9]/.test(pw)) score++;
+  return {
+    score,
+    label: ["Too short", "Weak", "Fair", "Good", "Strong"][score],
+  };
+}
+
+function SignUpForm() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const { signUp } = useSession();
+  const [error, setError] = useState<string | null>(null);
+  const [showPassword, setShowPassword] = useState(false);
+
+  const {
+    register,
+    handleSubmit,
+    control,
+    watch,
+    formState: { errors, isSubmitting },
+  } = useForm<Values>({
+    resolver: zodResolver(schema),
+    defaultValues: {
+      firstName: "",
+      lastName: "",
+      email: "",
+      password: "",
+      confirmPassword: "",
+      terms: false,
+    },
+  });
+
+  const password = watch("password");
+  const strength = passwordStrength(password ?? "");
+
+  const onSubmit = async (values: Values) => {
+    setError(null);
+    try {
+      const user = await signUp({
+        fullName: `${values.firstName} ${values.lastName}`.trim(),
+        email: values.email.trim(),
+        password: values.password,
+      });
+      router.replace(
+        resolveRedirect(searchParams.get("callbackUrl"), homeFor(user.role)),
+      );
+    } catch (err) {
+      setError(errorMessage(err));
+    }
+  };
+
+  const callbackUrl = searchParams.get("callbackUrl");
+  const signInHref = callbackUrl
+    ? `/sign-in?callbackUrl=${encodeURIComponent(callbackUrl)}`
+    : "/sign-in";
+
+  return (
+    <>
+      <form className="space-y-4" onSubmit={handleSubmit(onSubmit)} noValidate>
+        {error ? (
+          <Alert variant="destructive">
+            <AlertCircle className="size-4" />
+            <AlertDescription>{error}</AlertDescription>
+          </Alert>
+        ) : null}
+
+        <div className="grid gap-4 sm:grid-cols-2">
+          <FormField
+            label="First name"
+            htmlFor="firstName"
+            error={errors.firstName?.message}
+            required
+          >
+            <Input
+              id="firstName"
+              autoComplete="given-name"
+              aria-invalid={!!errors.firstName}
+              {...register("firstName")}
+            />
+          </FormField>
+          <FormField
+            label="Last name"
+            htmlFor="lastName"
+            error={errors.lastName?.message}
+            required
+          >
+            <Input
+              id="lastName"
+              autoComplete="family-name"
+              aria-invalid={!!errors.lastName}
+              {...register("lastName")}
+            />
+          </FormField>
+        </div>
+
+        <FormField
+          label="Email address"
+          htmlFor="email"
+          error={errors.email?.message}
+          required
+        >
+          <Input
+            id="email"
+            type="email"
+            autoComplete="email"
+            placeholder="name@institution.com"
+            aria-invalid={!!errors.email}
+            {...register("email")}
+          />
+        </FormField>
+
+        <FormField
+          label="Password"
+          htmlFor="password"
+          error={errors.password?.message}
+          required
+        >
+          <div className="relative">
+            <Input
+              id="password"
+              type={showPassword ? "text" : "password"}
+              autoComplete="new-password"
+              aria-invalid={!!errors.password}
+              aria-describedby="password-strength"
+              className="pr-10"
+              {...register("password")}
+            />
+            <button
+              type="button"
+              onClick={() => setShowPassword((v) => !v)}
+              className="absolute inset-y-0 right-0 flex w-10 items-center justify-center rounded-r-md text-muted-foreground hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              aria-label={showPassword ? "Hide password" : "Show password"}
+            >
+              {showPassword ? (
+                <EyeOff className="size-4" />
+              ) : (
+                <Eye className="size-4" />
+              )}
+            </button>
+          </div>
+          {password ? (
+            <div
+              id="password-strength"
+              className="flex items-center gap-2 pt-1"
+              aria-live="polite"
+            >
+              <div className="flex flex-1 gap-1">
+                {[1, 2, 3, 4].map((i) => (
+                  <span
+                    key={i}
+                    className={
+                      i <= strength.score
+                        ? strength.score >= 3
+                          ? "h-1 flex-1 rounded-full bg-emerald-500"
+                          : "h-1 flex-1 rounded-full bg-amber-500"
+                        : "h-1 flex-1 rounded-full bg-muted"
+                    }
+                  />
+                ))}
+              </div>
+              <span className="w-16 text-right text-[11px] text-muted-foreground">
+                {strength.label}
+              </span>
+            </div>
+          ) : null}
+        </FormField>
+
+        <FormField
+          label="Confirm password"
+          htmlFor="confirmPassword"
+          error={errors.confirmPassword?.message}
+          required
+        >
+          <Input
+            id="confirmPassword"
+            type={showPassword ? "text" : "password"}
+            autoComplete="new-password"
+            aria-invalid={!!errors.confirmPassword}
+            {...register("confirmPassword")}
+          />
+        </FormField>
+
+        <div className="space-y-1.5 pt-1">
+          <div className="flex items-start gap-2.5">
+            <Controller
+              control={control}
+              name="terms"
+              render={({ field }) => (
+                <Checkbox
+                  id="terms"
+                  checked={field.value}
+                  onCheckedChange={(v) => field.onChange(v === true)}
+                  onBlur={field.onBlur}
+                  aria-invalid={!!errors.terms}
+                  className="mt-0.5"
+                />
+              )}
+            />
+            <label
+              htmlFor="terms"
+              className="text-xs leading-relaxed text-muted-foreground"
+            >
+              I accept the Terms of Use and the Privacy Notice, and I
+              acknowledge that subscriptions require identity verification (KYC)
+              before any investment.
+            </label>
+          </div>
+          {errors.terms ? (
+            <p className="text-xs text-red-600" role="alert">
+              {errors.terms.message}
+            </p>
+          ) : null}
+        </div>
+
+        <Button
+          type="submit"
+          className="h-10 w-full bg-brand text-brand-foreground hover:bg-brand-light"
+          disabled={isSubmitting}
+        >
+          {isSubmitting ? (
+            <>
+              <Loader2 className="animate-spin" /> Creating account…
+            </>
+          ) : (
+            "Create account"
+          )}
+        </Button>
+      </form>
+
+      <p className="mt-8 border-t border-border pt-6 text-center text-sm text-muted-foreground">
+        Already have an account?{" "}
+        <Link
+          href={signInHref}
+          className="font-medium text-ink underline-offset-4 hover:underline"
+        >
+          Sign in
+        </Link>
+      </p>
+    </>
+  );
 }
 
 export default function SignUpPage() {
-    const { register, handleSubmit, formState: { errors, isValid } } = useForm<SignUpFormValues>({
-        mode: "onChange"
-    })
-
-
-    const onSubmit = async (data: SignUpFormValues) => {
-        console.log("Sign Up Data:", data);
-
-    };
-
-    return (
-        <div className="flex min-h-screen flex-col md:flex-row bg-[#2D2B3D]">
-            {/* Partie gauche : branding */}
-            <div className="md:w-3/5 w-full flex flex-col items-center justify-center text-white p-12 md:p-16 bg-animated-gradient-dark">
-                <h1 className="text-5xl font-bold mb-6 text-center md:text-left">Tooken</h1>
-                <p className="text-lg max-w-md text-center md:text-left">
-                    Créez votre compte et commencez à gérer vos NFTs Soulbound en toute sécurité.
-                </p>
-                <img
-                    src="/logo-transparent_3000.png"
-                    alt="Tooken Logo"
-                    className="mt-10 w-48 md:w-64"
-                />
-            </div>
-
-            {/* Partie droite : formulaire */}
-            <div className="md:w-2/5 w-full flex items-center justify-center p-12 md:p-16  bg-animated-gradient-white">
-                <div className="w-full max-w-md space-y-6">
-                    <h2 className="text-3xl font-bold text-gray-800 text-center">Sign Up</h2>
-
-                    <form className="flex flex-col gap-4" onSubmit={handleSubmit(onSubmit)}>
-                        {/* Full Name */}
-                        <div className="flex flex-col">
-                            <Input
-                                type="text"
-                                placeholder="Full Name"
-                                {...register("fullName", { required: "Full name is required" })}
-                                className={errors.fullName ? "border-red-500 focus:border-red-500 focus:ring-1 focus:ring-red-500 rounded-lg" : "rounded-lg"}
-                            />
-                            {errors.fullName && (
-                                <span className="text-red-500 text-sm mt-1">{errors.fullName.message}</span>
-                            )}
-                        </div>
-
-                        {/* Email */}
-                        <div className="flex flex-col">
-                            <Input
-                                type="email"
-                                placeholder="Email"
-                                {...register("email", {
-                                    required: "Email is required",
-                                    pattern: { value: /^\S+@\S+$/i, message: "Invalid email address" }
-                                })}
-                                className={errors.email ? "border-red-500 focus:border-red-500 focus:ring-1 focus:ring-red-500 rounded-lg" : "rounded-lg"}
-                            />
-                            {errors.email && (
-                                <span className="text-red-500 text-sm mt-1">{errors.email.message}</span>
-                            )}
-                        </div>
-
-                        {/* Password */}
-                        <div className="flex flex-col">
-                            <Input
-                                type="password"
-                                placeholder="Password"
-                                {...register("password", { required: "Password is required", minLength: { value: 6, message: "Minimum 6 characters" } })}
-                                className={errors.password ? "border-red-500 focus:border-red-500 focus:ring-1 focus:ring-red-500 rounded-lg" : "rounded-lg"}
-                            />
-                            {errors.password && (
-                                <span className="text-red-500 text-sm mt-1">{errors.password.message}</span>
-                            )}
-                        </div>
-
-                        <Button
-                            type="submit"
-                            className="w-full mt-2 disabled:bg-gray-300 disabled:text-gray-600 disabled:cursor-not-allowed"
-                            disabled={!isValid}
-                        >
-                            Sign Up
-                        </Button>
-                    </form>
-
-                    <p className="text-sm text-center text-gray-600">
-                        Already have an account? <a href="/sign-in" className="text-blue-600 font-medium">Sign In</a>
-                    </p>
-                </div>
-            </div>
-        </div>
-    )
+  return (
+    <AuthShell
+      title="Open an investor account"
+      subtitle="Create your access, then complete identity verification to subscribe to offerings."
+    >
+      <Suspense fallback={null}>
+        <SignUpForm />
+      </Suspense>
+    </AuthShell>
+  );
 }
