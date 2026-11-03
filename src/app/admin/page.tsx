@@ -303,7 +303,7 @@ export default function AdminOverviewPage() {
           )}
         </div>
 
-        <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_380px]">
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1fr)_380px]">
           <div className="min-w-0 space-y-6">
             <RecentOrders
               loading={orders.isLoading}
@@ -318,7 +318,7 @@ export default function AdminOverviewPage() {
               rows={assets}
             />
           </div>
-          <div className="space-y-6">
+          <div className="min-w-0 space-y-6">
             <Panel>
               <PanelHeader
                 title="Action required"
