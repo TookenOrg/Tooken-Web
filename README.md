@@ -32,9 +32,8 @@ The browser never calls the API directly: `next.config.ts` rewrites
 `/api/backend/*` to `BACKEND_URL`, so requests are same-origin and CORS does not
 apply (the `Idempotency-Key` header included).
 
-Turbopack uses the OS certificate store (`turbopackUseSystemTlsCerts` in
-`next.config.ts`), so Google Fonts also download behind TLS-intercepting
-corporate proxies.
+Turbopack trusts the OS certificate store, so Google Fonts also download
+behind TLS-intercepting corporate proxies.
 
 ## Scripts
 

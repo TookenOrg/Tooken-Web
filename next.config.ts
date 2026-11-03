@@ -7,12 +7,6 @@ const backendUrl = (
 const nextConfig: NextConfig = {
   reactCompiler: true,
 
-  // Trust the OS certificate store so Google Fonts download behind
-  // TLS-intercepting corporate proxies.
-  experimental: {
-    turbopackUseSystemTlsCerts: true,
-  },
-
   // The browser only talks to this origin: requests are forwarded to the API
   // server-side, so CORS never applies (the Idempotency-Key header included).
   async rewrites() {
