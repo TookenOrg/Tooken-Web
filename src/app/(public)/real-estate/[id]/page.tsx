@@ -45,6 +45,7 @@ import {
   formatPercent,
   remainingShares,
 } from "@/lib/format";
+import { offeringTerms } from "@/lib/offering-terms";
 import { countryName, estateTypeLabel } from "@/lib/reference";
 import { canInvest } from "@/lib/status";
 import { cn } from "@/lib/utils";
@@ -346,6 +347,14 @@ function InvestCard({ estate }: { estate: RealEstate }) {
                 ? `${formatNumber(cfg.max_shares_per_investor)} shares`
                 : "—",
             },
+            ...(cfg?.min_investment
+              ? [
+                  {
+                    label: "Min. investment",
+                    value: formatMoney(cfg.min_investment, cfg.currency_code),
+                  },
+                ]
+              : []),
           ]}
         />
         <div className="space-y-2">{action}</div>
@@ -506,6 +515,7 @@ export default function RealEstateDetailPage() {
   const currency = cfg?.currency_code || "EUR";
   const location = estateLocation(estate);
   const title = estate.title || `Offering #${estate.id}`;
+  const terms = offeringTerms(cfg);
 
   const specItems = [
     spec?.surface_area != null && {
@@ -648,6 +658,18 @@ export default function RealEstateDetailPage() {
               ) : null}
             </PanelBody>
           </Panel>
+
+          {terms.length ? (
+            <Panel>
+              <PanelHeader
+                title="Terms & fees"
+                description="Investment limits and charges set by the issuer"
+              />
+              <PanelBody className="py-2">
+                <KeyValueList items={terms} columns={2} />
+              </PanelBody>
+            </Panel>
+          ) : null}
 
           <div className="grid gap-6 md:grid-cols-2">
             <Panel>

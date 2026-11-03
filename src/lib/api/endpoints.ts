@@ -13,6 +13,7 @@ import type {
   IssuerPatchRequest,
   IssuerWriteRequest,
   JwtToken,
+  KycOnChainStatus,
   KycOnChainSyncResponse,
   KycVerification,
   KycVerificationRequest,
@@ -20,6 +21,7 @@ import type {
   RealEstatePatchRequest,
   RealEstateSummary,
   RealEstateWriteRequest,
+  Role,
   SignInRequest,
   SignUpRequest,
   TokenInfos,
@@ -49,6 +51,19 @@ export const authApi = {
 
 export const usersApi = {
   me: () => apiRequest<User>("/users/me"),
+  /** Live identity-registry verdict; no wallet means not verified. */
+  myKycOnChain: () => apiRequest<KycOnChainStatus>("/users/me/kyc/onchain"),
+  /** ADMIN only. The new role reaches the target's JWT on its next refresh. */
+  updateRole: (userId: number, role: Role) =>
+    apiRequest<User>(`/users/${userId}/role`, {
+      method: "PATCH",
+      body: { role },
+    }),
+  /** Owner only, even for administrators. */
+  favorites: (userId: number) =>
+    apiRequest<RealEstateSummary[] | null>(
+      `/users/${userId}/favorites/real-estates`,
+    ).then((rows) => rows ?? []),
   addFavorite: (userId: number, realEstateId: number) =>
     apiRequest<ApiMessage>(
       `/users/${userId}/favorites/real-estates/${realEstateId}`,

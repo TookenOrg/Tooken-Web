@@ -35,6 +35,7 @@ export type CreateIssuanceOrderRequest = Schemas["CreateIssuanceOrderRequest"];
 export type KycVerification = Schemas["KycVerification"];
 export type KycVerificationRequest = Schemas["KycVerificationRequest"];
 export type KycOnChainSyncResponse = Schemas["KycOnChainSyncResponse"];
+export type KycOnChainStatus = Schemas["KycOnChainStatus"];
 
 export type TrexSuiteInfos = Schemas["TrexSuiteInfos"];
 export type ContractDetails = Schemas["ContractDetails"];

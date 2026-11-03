@@ -9,7 +9,6 @@ import {
   buildPatchPayload,
   computeValuation,
   emptyAssetValues,
-  parseMissingFields,
 } from "./asset-payload";
 
 function gasperich(): AssetFormValues {
@@ -75,6 +74,10 @@ const stored: RealEstate = {
     payment_frequency_type_id: 5,
     max_shares_per_investor: "400",
     total_valuation: "4000000",
+    entry_fee_rate: "2.5",
+    compartment_ref: "C-01",
+    min_investment: "1000",
+    max_investment: "200000",
   },
   media: [
     {
@@ -150,6 +153,17 @@ describe("buildCreatePayload", () => {
     expect(p.configuration).toBeUndefined();
     expect(p.media?.[0].is_cover).toBe(true);
     expect(p.imageurl).toBe("https://img.example/a.jpg");
+  });
+});
+
+describe("assetToFormValues", () => {
+  it("prefills fees, investment limits and compartment returned by the API", () => {
+    const v = assetToFormValues(stored);
+    expect(v.configuration.entry_fee_rate).toBe("2.5");
+    expect(v.configuration.compartment_ref).toBe("C-01");
+    expect(v.configuration.min_investment).toBe("1000");
+    expect(v.configuration.max_investment).toBe("200000");
+    expect(v.configuration.exit_fee_rate).toBe("");
   });
 });
 
@@ -247,14 +261,5 @@ describe("helpers", () => {
     expect(computeValuation("8000", "500")).toBe("4000000.00");
     expect(computeValuation("3", "0.1")).toBe("0.30");
     expect(computeValuation("", "500")).toBeNull();
-  });
-
-  it("extracts missing fields from a 409 publish message", () => {
-    expect(
-      parseMissingFields(
-        "this asset is not complete enough to be published, missing: description, media, configuration.yield",
-      ),
-    ).toEqual(["description", "media", "configuration.yield"]);
-    expect(parseMissingFields("issuer is not active")).toEqual([]);
   });
 });

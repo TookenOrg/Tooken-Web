@@ -175,6 +175,51 @@ export function maxSubscribable({
   return Math.max(0, Math.min(...caps));
 }
 
+/**
+ * Share-count bounds implied by the offering's investment amounts: the fewest
+ * shares reaching `minInvestment` and the most staying within `maxInvestment`.
+ * Bounds that cannot be computed are ignored.
+ */
+export function investmentShareBounds({
+  price,
+  minInvestment,
+  maxInvestment,
+}: {
+  price: string | null | undefined;
+  minInvestment?: string | null;
+  maxInvestment?: string | null;
+}): { min: number; max: number | null } {
+  const bounds = { min: 1, max: null as number | null };
+  let p: ReturnType<typeof parseDecimal>;
+  try {
+    p = parseDecimal(price ?? "");
+  } catch {
+    return bounds;
+  }
+  if (p.int <= 0n) return bounds;
+  // amount / price as an exact fraction of two integers on a common scale.
+  const ratio = (amount: string | null | undefined) => {
+    if (!amount?.trim()) return null;
+    try {
+      const a = parseDecimal(amount);
+      const scale = Math.max(a.scale, p.scale);
+      const num = a.int * 10n ** BigInt(scale - a.scale);
+      const den = p.int * 10n ** BigInt(scale - p.scale);
+      return num >= 0n ? { num, den } : null;
+    } catch {
+      return null;
+    }
+  };
+  const lo = ratio(minInvestment);
+  if (lo) {
+    const ceil = (lo.num + lo.den - 1n) / lo.den;
+    bounds.min = Math.max(1, Number(ceil));
+  }
+  const hi = ratio(maxInvestment);
+  if (hi) bounds.max = Number(hi.num / hi.den);
+  return bounds;
+}
+
 /** "mm:ss" (or "h:mm:ss") left until `until`; "00:00" when elapsed. */
 export function formatCountdown(msLeft: number): string {
   const total = Math.max(0, Math.floor(msLeft / 1000));

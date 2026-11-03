@@ -17,6 +17,7 @@ import {
   orderApi,
   platformApi,
   realEstateApi,
+  usersApi,
 } from "./endpoints";
 import type {
   IssuanceOrder,
@@ -24,6 +25,7 @@ import type {
   IssuerWriteRequest,
   RealEstatePatchRequest,
   RealEstateWriteRequest,
+  Role,
 } from "./types";
 
 export const queryKeys = {
@@ -38,6 +40,8 @@ export const queryKeys = {
   kycList: (filter: KycListFilter) => ["kyc", "list", filter] as const,
   kyc: (id: number) => ["kyc", id] as const,
   kycAll: ["kyc"] as const,
+  kycOnChain: ["kyc", "onchain"] as const,
+  favorites: (userId: number) => ["favorites", userId] as const,
   trexSuite: (salt?: string) => ["trex-suite", salt ?? ""] as const,
   tokenInfos: (address: string) => ["token-infos", address] as const,
 };
@@ -283,6 +287,25 @@ export function useRevokeKyc() {
 
 export function useSyncKycOnChain() {
   return useKycMutation((id: number) => kycApi.syncOnChain(id));
+}
+
+/** Current user's verification as read from the identity registry. */
+export function useMyKycOnChain(refetchInterval: number | false = false) {
+  return useQuery({
+    queryKey: queryKeys.kycOnChain,
+    queryFn: usersApi.myKycOnChain,
+    refetchInterval,
+    retry: false,
+  });
+}
+
+// --- Users -----------------------------------------------------------------
+
+export function useUpdateUserRole() {
+  return useMutation({
+    mutationFn: (v: { userId: number; role: Role }) =>
+      usersApi.updateRole(v.userId, v.role),
+  });
 }
 
 // --- Blockchain ------------------------------------------------------------

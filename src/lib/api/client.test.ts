@@ -71,6 +71,19 @@ describe("apiRequest", () => {
     });
   });
 
+  it("exposes the missing fields of a completeness conflict", async () => {
+    fetchMock.mockResolvedValueOnce(
+      json(409, {
+        message: "not complete enough",
+        missing_fields: ["description", "configuration.yield"],
+        data: null,
+      }),
+    );
+    await expect(apiRequest("/x")).rejects.toMatchObject({
+      missingFields: ["description", "configuration.yield"],
+    });
+  });
+
   it("uses a generic message when the body has none", async () => {
     fetchMock.mockResolvedValueOnce(new Response("", { status: 503 }));
     await expect(apiRequest("/x")).rejects.toMatchObject({

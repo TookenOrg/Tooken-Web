@@ -112,6 +112,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/users/me/kyc/onchain": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read the current user's on-chain KYC status
+         * @description Reads verification from the shared identity registry without creating a wallet, identity or transaction. An account without a wallet is not verified. Database approval and on-chain verification are distinct.
+         */
+        get: operations["GetCurrentUserKycOnChain"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/users/{userId}/role": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Change an account's role
+         * @description ADMIN only; the caller's administrator role is re-read from the database. Self-demotion and demotion of the last administrator are refused. Existing access tokens retain their previous role until they expire; refreshing or signing in issues a token with the current role.
+         */
+        patch: operations["UpdateUserRole"];
+        trace?: never;
+    };
     "/users/kyc/verifications": {
         parameters: {
             query?: never;
@@ -499,6 +539,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/users/{userId}/favorites/real-estates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List the authenticated user's favorite real estates
+         * @description Only the owner can read this list, including when the caller is an administrator. Uses the same visibility rules as the real estate list; deleted assets and assets hidden from the caller are omitted.
+         */
+        get: operations["GetFavoritesRealEstatesForUser"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/users/{userId}/favorites/real-estates/{realEstateId}": {
         parameters: {
             query?: never;
@@ -710,6 +770,8 @@ export interface components {
     schemas: {
         APIResponse: {
             message: string;
+            /** @description On a real estate or issuer completeness conflict (409), the fields to complete, using request paths such as configuration.total_shares. Absent for conflicts unrelated to missing fields. */
+            missing_fields?: string[];
             data?: unknown;
         };
         /** @description A session, as opened by sign-up or sign-in and extended by refresh. */
@@ -768,6 +830,17 @@ export interface components {
         };
         RefreshTokenResponse: components["schemas"]["APIResponse"] & {
             data?: components["schemas"]["JwtToken"];
+        };
+        UpdateUserRoleRequest: {
+            /** @enum {string} */
+            role: "USER" | "MANAGER" | "ADMIN";
+        };
+        KycOnChainStatus: {
+            user_id: number;
+            /** @description Actual verification result from the shared identity registry */
+            is_verified: boolean;
+            /** @description Absent when the account has no wallet */
+            wallet_address?: string;
         };
         User: {
             /**
@@ -1154,6 +1227,18 @@ export interface components {
              * @example 100
              */
             max_shares_per_investor?: string;
+            /** @description Minimum investment amount in the asset's currency, exact decimal */
+            min_investment?: string;
+            /** @description Maximum investment amount in the asset's currency, exact decimal */
+            max_investment?: string;
+            /** @description Entry fee percentage between 0 and 100, exact decimal */
+            entry_fee_rate?: string;
+            /** @description Management fee percentage between 0 and 100, exact decimal */
+            mgmt_fee_rate?: string;
+            /** @description Exit fee percentage between 0 and 100, exact decimal */
+            exit_fee_rate?: string;
+            /** @description Luxembourg compartment reference */
+            compartment_ref?: string;
         };
         RealEstateProgression: {
             /** @description Shares held by non-cancelled issuance orders. An integer, because an order quantity is an integer; only total_shares needs a string. */
@@ -1770,6 +1855,142 @@ export interface operations {
                 };
             };
             /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIResponse"];
+                };
+            };
+        };
+    };
+    GetCurrentUserKycOnChain: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Current on-chain verification state */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["KycOnChainStatus"];
+                };
+            };
+            /** @description Authentication required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIResponse"];
+                };
+            };
+            /** @description Account no longer exists */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIResponse"];
+                };
+            };
+            /** @description Unable to read the account or wallet */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIResponse"];
+                };
+            };
+            /** @description The chain or shared identity registry is unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIResponse"];
+                };
+            };
+        };
+    };
+    UpdateUserRole: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                userId: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateUserRoleRequest"];
+            };
+        };
+        responses: {
+            /** @description Updated account */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["User"];
+                };
+            };
+            /** @description Invalid account identifier or role */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIResponse"];
+                };
+            };
+            /** @description Authentication required or account no longer exists */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIResponse"];
+                };
+            };
+            /** @description The caller is not an administrator */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIResponse"];
+                };
+            };
+            /** @description Target account not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIResponse"];
+                };
+            };
+            /** @description Self-demotion or demotion of the last administrator */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIResponse"];
+                };
+            };
+            /** @description Unable to update the account */
             500: {
                 headers: {
                     [name: string]: unknown;
@@ -3259,6 +3480,64 @@ export interface operations {
                 };
             };
             /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIResponse"];
+                };
+            };
+        };
+    };
+    GetFavoritesRealEstatesForUser: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                userId: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Favorite real estates, or an empty array */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RealEstateSummary"][];
+                };
+            };
+            /** @description Invalid user identifier */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIResponse"];
+                };
+            };
+            /** @description Authentication required or account no longer exists */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIResponse"];
+                };
+            };
+            /** @description The caller is not the owner */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIResponse"];
+                };
+            };
+            /** @description Unable to retrieve favorites */
             500: {
                 headers: {
                     [name: string]: unknown;

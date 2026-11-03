@@ -4,6 +4,7 @@ import {
   committedShares,
   divideDecimal,
   formatCountdown,
+  investmentShareBounds,
   maxSubscribable,
   orderCategory,
   summarizePortfolio,
@@ -119,5 +120,30 @@ describe("helpers", () => {
     expect(formatCountdown(14 * 60_000 + 5_000)).toBe("14:05");
     expect(formatCountdown(3_725_000)).toBe("1:02:05");
     expect(formatCountdown(-1)).toBe("00:00");
+  });
+});
+
+describe("investmentShareBounds", () => {
+  it("converts investment amounts into whole-share bounds", () => {
+    expect(
+      investmentShareBounds({
+        price: "500",
+        minInvestment: "1200",
+        maxInvestment: "10000.00",
+      }),
+    ).toEqual({ min: 3, max: 20 });
+  });
+
+  it("keeps decimals exact and ignores missing bounds", () => {
+    expect(
+      investmentShareBounds({ price: "0.1", minInvestment: "0.3" }),
+    ).toEqual({ min: 3, max: null });
+    expect(investmentShareBounds({ price: "500" })).toEqual({
+      min: 1,
+      max: null,
+    });
+    expect(investmentShareBounds({ price: "0", minInvestment: "100" })).toEqual(
+      { min: 1, max: null },
+    );
   });
 });

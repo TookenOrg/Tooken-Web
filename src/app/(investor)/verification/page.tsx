@@ -36,6 +36,7 @@ import { formatDate, formatDateTime } from "@/lib/format";
 import { COUNTRIES, countryName } from "@/lib/reference";
 import { canInvest, kycStatusMeta } from "@/lib/status";
 import { cn } from "@/lib/utils";
+import { OnChainIdentityPanel } from "../_components/onchain-identity";
 
 const CRUMBS = [
   { label: "Dashboard", href: "/dashboard" },
@@ -110,6 +111,7 @@ export default function VerificationPage() {
           )}
         </div>
         <aside className="space-y-6">
+          <OnChainIdentityPanel poll={inProgress} />
           <Panel>
             <PanelHeader title="How verification works" />
             <PanelBody>

@@ -13,6 +13,7 @@ import { useSession } from "@/lib/auth/session-context";
 import { formatDate, formatDateTime } from "@/lib/format";
 import { countryName } from "@/lib/reference";
 import { canInvest } from "@/lib/status";
+import { OnChainIdentityPanel } from "../_components/onchain-identity";
 
 export default function ProfilePage() {
   const { user, userLoading, isInvestor, isStaff } = useSession();
@@ -159,6 +160,8 @@ export default function ProfilePage() {
               </PanelBody>
             </Panel>
           ) : null}
+
+          {isInvestor ? <OnChainIdentityPanel /> : null}
 
           <Panel>
             <PanelHeader title="Security" />

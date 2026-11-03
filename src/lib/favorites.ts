@@ -1,69 +1,34 @@
 "use client";
 
-import { useCallback, useSyncExternalStore } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useCallback, useMemo } from "react";
 import { ApiError } from "@/lib/api/client";
 import { usersApi } from "@/lib/api/endpoints";
+import { queryKeys } from "@/lib/api/hooks";
+import type { RealEstateSummary } from "@/lib/api/types";
 
-/**
- * The API can add and remove favorites but cannot list them, so the set is
- * mirrored in localStorage per user to render hearts and the watchlist.
- */
-const KEY = (userId: number) => `tooken:favorites:${userId}`;
-const listeners = new Set<() => void>();
-const cache = new Map<number, number[]>();
-
-function read(userId: number): number[] {
-  const cached = cache.get(userId);
-  if (cached) return cached;
-  let ids: number[] = [];
-  try {
-    const raw = window.localStorage.getItem(KEY(userId));
-    const parsed = raw ? JSON.parse(raw) : [];
-    ids = Array.isArray(parsed)
-      ? parsed.filter((n) => Number.isInteger(n))
-      : [];
-  } catch {
-    ids = [];
-  }
-  cache.set(userId, ids);
-  return ids;
-}
-
-function write(userId: number, ids: number[]) {
-  const unique = Array.from(new Set(ids));
-  cache.set(userId, unique);
-  try {
-    window.localStorage.setItem(KEY(userId), JSON.stringify(unique));
-  } catch {
-    // Storage may be unavailable (private mode): the in-memory copy still works.
-  }
-  for (const l of listeners) l();
-}
-
-function subscribe(listener: () => void) {
-  listeners.add(listener);
-  return () => {
-    listeners.delete(listener);
-  };
+/** The user's watchlist, as stored by the backend. */
+export function useFavorites(userId: number | undefined) {
+  return useQuery({
+    queryKey: queryKeys.favorites(userId ?? 0),
+    queryFn: () => usersApi.favorites(userId as number),
+    enabled: typeof userId === "number" && userId > 0,
+  });
 }
 
 const EMPTY: number[] = [];
 
 export function useFavoriteIds(userId: number | undefined): number[] {
-  return useSyncExternalStore(
-    subscribe,
-    () => (userId ? read(userId) : EMPTY),
-    () => EMPTY,
-  );
+  const { data } = useFavorites(userId);
+  return useMemo(() => (data ? data.map((e) => e.id) : EMPTY), [data]);
 }
 
-/** Adds or removes a favorite on the backend and mirrors the result locally. */
+/** Adds or removes a favorite; an already-settled state counts as success. */
 export async function setFavorite(
   userId: number,
   realEstateId: number,
   favorite: boolean,
 ) {
-  const current = read(userId);
   try {
     if (favorite) await usersApi.addFavorite(userId, realEstateId);
     else await usersApi.removeFavorite(userId, realEstateId);
@@ -76,20 +41,34 @@ export async function setFavorite(
         (!favorite && error.status === 404));
     if (!settled) throw error;
   }
-  write(
-    userId,
-    favorite
-      ? [...current, realEstateId]
-      : current.filter((id) => id !== realEstateId),
-  );
 }
 
 export function useFavorite(userId: number | undefined, realEstateId: number) {
+  const qc = useQueryClient();
   const ids = useFavoriteIds(userId);
   const isFavorite = ids.includes(realEstateId);
+
   const toggle = useCallback(async () => {
     if (!userId) return;
-    await setFavorite(userId, realEstateId, !isFavorite);
-  }, [userId, realEstateId, isFavorite]);
+    const key = queryKeys.favorites(userId);
+    const previous = qc.getQueryData<RealEstateSummary[]>(key);
+    // Optimistic heart: removal is applied at once, addition waits for the
+    // refetch because the list needs the full summary of the asset.
+    if (isFavorite && previous) {
+      qc.setQueryData(
+        key,
+        previous.filter((e) => e.id !== realEstateId),
+      );
+    }
+    try {
+      await setFavorite(userId, realEstateId, !isFavorite);
+    } catch (error) {
+      if (previous) qc.setQueryData(key, previous);
+      throw error;
+    } finally {
+      await qc.invalidateQueries({ queryKey: key });
+    }
+  }, [qc, userId, realEstateId, isFavorite]);
+
   return { isFavorite, toggle };
 }

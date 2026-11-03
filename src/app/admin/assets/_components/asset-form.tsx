@@ -509,12 +509,6 @@ export function AssetForm({
               <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                 Investment limits & fees
               </h3>
-              {mode === "edit" ? (
-                <p className="mt-1 text-xs text-muted-foreground">
-                  These values are not returned by the API. Leave blank to keep
-                  the current settings; enter a value to replace it.
-                </p>
-              ) : null}
               <div className="mt-4 grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
                 <NumberInput
                   form={form}

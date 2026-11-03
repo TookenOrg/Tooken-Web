@@ -50,6 +50,10 @@ describe("decideRoute", () => {
       to: "/admin",
     });
     expect(decideRoute("/admin/platform", admin)).toEqual({ type: "next" });
+    expect(decideRoute("/admin/users", manager)).toEqual({
+      type: "redirect",
+      to: "/admin",
+    });
   });
 
   it("does not let staff subscribe", () => {

@@ -14,12 +14,20 @@ export const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? "/api/backend";
 export class ApiError extends Error {
   readonly status: number;
   readonly data: unknown;
+  /** Fields to complete, sent with a 409 completeness conflict. */
+  readonly missingFields: string[];
 
-  constructor(status: number, message: string, data?: unknown) {
+  constructor(
+    status: number,
+    message: string,
+    data?: unknown,
+    missingFields: string[] = [],
+  ) {
     super(message);
     this.name = "ApiError";
     this.status = status;
     this.data = data;
+    this.missingFields = missingFields;
   }
 }
 
@@ -186,7 +194,18 @@ export async function apiRequest<T>(
       body && typeof body === "object" && "data" in body
         ? (body as { data: unknown }).data
         : body;
-    throw new ApiError(res.status, message || defaultMessage(res.status), data);
+    const missing =
+      body && typeof body === "object" && "missing_fields" in body
+        ? (body as { missing_fields: unknown }).missing_fields
+        : undefined;
+    throw new ApiError(
+      res.status,
+      message || defaultMessage(res.status),
+      data,
+      Array.isArray(missing)
+        ? missing.filter((f): f is string => typeof f === "string")
+        : [],
+    );
   }
   return body as T;
 }

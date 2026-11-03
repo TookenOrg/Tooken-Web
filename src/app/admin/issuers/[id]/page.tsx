@@ -52,6 +52,7 @@ import {
   formatNumber,
   formatPercent,
 } from "@/lib/format";
+import { missingFieldLabel, missingFieldsOf } from "@/lib/missing-fields";
 import { countryName } from "@/lib/reference";
 import { ISSUER_STATUS } from "@/lib/status";
 import {
@@ -181,7 +182,7 @@ export default function IssuerDetailPage() {
                 <Alert variant="destructive">
                   <AlertTitle>The changes were refused</AlertTitle>
                   <AlertDescription>
-                    {errorMessage(update.error)}
+                    {refusalMessage(update.error)}
                   </AlertDescription>
                 </Alert>
               ) : null}
@@ -265,6 +266,14 @@ export default function IssuerDetailPage() {
   );
 }
 
+/** Names the fields to complete when the refusal is a completeness conflict. */
+function refusalMessage(error: unknown): string {
+  const missing = missingFieldsOf(error);
+  return missing.length
+    ? `Complete first: ${missing.map(missingFieldLabel).join(", ")}.`
+    : errorMessage(error);
+}
+
 const SETTABLE_STATUSES = ["draft", "active", "suspended"] as const;
 
 function StatusPanel({ issuer }: { issuer: Issuer }) {
@@ -314,7 +323,7 @@ function StatusPanel({ issuer }: { issuer: Issuer }) {
         </Select>
         {update.isError ? (
           <p className="text-xs text-red-600" role="alert">
-            {errorMessage(update.error)}
+            {refusalMessage(update.error)}
           </p>
         ) : null}
         <Button

@@ -38,14 +38,21 @@ import { useCreateOrder, useOrders, useRealEstate } from "@/lib/api/hooks";
 import type { IssuanceOrder, RealEstate } from "@/lib/api/types";
 import { useSession } from "@/lib/auth/session-context";
 import {
+  addDecimal,
   formatFrequency,
   formatMoney,
   formatNumber,
   formatPercent,
   multiplyDecimal,
+  percentOf,
   remainingShares,
 } from "@/lib/format";
-import { committedShares, maxSubscribable } from "@/lib/portfolio";
+import { offeringTerms } from "@/lib/offering-terms";
+import {
+  committedShares,
+  investmentShareBounds,
+  maxSubscribable,
+} from "@/lib/portfolio";
 import { canInvest } from "@/lib/status";
 import { cn } from "@/lib/utils";
 import { ReservationCountdown } from "../../../_components/reservation-countdown";
@@ -290,22 +297,30 @@ function SubscriptionFlow({
   const remaining = cfg.total_shares
     ? remainingShares(cfg.total_shares, estate.progression?.tokens_sold)
     : null;
-  const max = maxSubscribable({
+  const bounds = investmentShareBounds({
+    price: cfg.price_per_share,
+    minInvestment: cfg.min_investment,
+    maxInvestment: cfg.max_investment,
+  });
+  const minQty = bounds.min;
+  const capped = maxSubscribable({
     maxPerInvestor: Number.isFinite(maxPerInvestor) ? maxPerInvestor : null,
     remaining,
     committed,
   });
+  const max = bounds.max === null ? capped : Math.min(capped, bounds.max);
+  const entryFeeRate = cfg.entry_fee_rate?.trim() || null;
 
   const [step, setStep] = useState<Step>("amount");
-  const [quantity, setQuantity] = useState(1);
-  const [raw, setRaw] = useState("1");
+  const [quantity, setQuantity] = useState(minQty);
+  const [raw, setRaw] = useState(String(minQty));
   const [ack, setAck] = useState({ risk: false, terms: false });
   const [intent, setIntent] = useState<Intent | null>(null);
   const [placed, setPlaced] = useState<IssuanceOrder | null>(null);
   const create = useCreateOrder();
 
   const title = estate.title ?? `Offering #${estate.id}`;
-  const outOfRange = quantity < 1 || quantity > max;
+  const outOfRange = quantity < minQty || quantity > max;
   const gross = useMemo(() => {
     try {
       return multiplyDecimal(price, Math.max(0, quantity));
@@ -313,6 +328,14 @@ function SubscriptionFlow({
       return "0";
     }
   }, [price, quantity]);
+  const entryFee = useMemo(() => {
+    if (!entryFeeRate) return null;
+    try {
+      return percentOf(gross, entryFeeRate);
+    } catch {
+      return null;
+    }
+  }, [gross, entryFeeRate]);
 
   useEffect(() => {
     if (step !== "amount") window.scrollTo({ top: 0, behavior: "smooth" });
@@ -420,14 +443,16 @@ function SubscriptionFlow({
                 description={`One share = ${formatMoney(price, currency)}. Whole shares only.`}
               />
               <PanelBody className="space-y-6">
-                {max === 0 ? (
+                {max < minQty ? (
                   <div
                     role="alert"
                     className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2.5 text-sm text-amber-900"
                   >
                     {remaining === 0
                       ? "All shares of this offering have been subscribed."
-                      : "You have reached the maximum number of shares per investor for this offering."}
+                      : max === 0
+                        ? "You have reached the maximum number of shares per investor for this offering."
+                        : `The shares still available to you are below the minimum investment of ${formatMoney(cfg.min_investment, currency)}.`}
                   </div>
                 ) : null}
                 <div className="space-y-2">
@@ -443,7 +468,7 @@ function SubscriptionFlow({
                       variant="outline"
                       size="icon-lg"
                       onClick={() => setQty(quantity - 1)}
-                      disabled={quantity <= 1}
+                      disabled={quantity <= minQty}
                       aria-label="Decrease quantity"
                     >
                       <Minus />
@@ -482,9 +507,19 @@ function SubscriptionFlow({
                         : "text-muted-foreground",
                     )}
                   >
-                    {max > 0 && max < Number.MAX_SAFE_INTEGER
-                      ? `Between 1 and ${formatNumber(max)} shares.`
-                      : "At least 1 share."}
+                    {max >= minQty && max < Number.MAX_SAFE_INTEGER
+                      ? `Between ${formatNumber(minQty)} and ${formatNumber(max)} shares.`
+                      : `At least ${formatNumber(minQty)} share${minQty > 1 ? "s" : ""}.`}
+                    {cfg.min_investment || cfg.max_investment
+                      ? ` Investment limits: ${[
+                          cfg.min_investment &&
+                            `min. ${formatMoney(cfg.min_investment, currency)}`,
+                          cfg.max_investment &&
+                            `max. ${formatMoney(cfg.max_investment, currency)}`,
+                        ]
+                          .filter(Boolean)
+                          .join(", ")}.`
+                      : ""}
                     {committed > 0
                       ? ` You already hold or have reserved ${formatNumber(committed)} shares of this offering.`
                       : ""}
@@ -493,19 +528,21 @@ function SubscriptionFlow({
 
                 <fieldset className="flex flex-wrap gap-2">
                   <legend className="sr-only">Quick picks</legend>
-                  {QUICK_PICKS.filter((n) => n <= max).map((n) => (
-                    <Button
-                      key={n}
-                      type="button"
-                      size="sm"
-                      variant={quantity === n ? "default" : "outline"}
-                      onClick={() => setQty(n)}
-                      className="tabular"
-                    >
-                      {formatNumber(n)}
-                    </Button>
-                  ))}
-                  {max > 0 && max < Number.MAX_SAFE_INTEGER ? (
+                  {QUICK_PICKS.filter((n) => n >= minQty && n <= max).map(
+                    (n) => (
+                      <Button
+                        key={n}
+                        type="button"
+                        size="sm"
+                        variant={quantity === n ? "default" : "outline"}
+                        onClick={() => setQty(n)}
+                        className="tabular"
+                      >
+                        {formatNumber(n)}
+                      </Button>
+                    ),
+                  )}
+                  {max >= minQty && max < Number.MAX_SAFE_INTEGER ? (
                     <Button
                       type="button"
                       size="sm"
@@ -530,9 +567,32 @@ function SubscriptionFlow({
                     </span>
                   </div>
                   <p className="mt-1 text-right text-xs text-muted-foreground tabular">
-                    {formatNumber(quantity)} × {formatMoney(price, currency)} ·
-                    fees calculated at order placement
+                    {formatNumber(quantity)} × {formatMoney(price, currency)}
+                    {entryFee === null
+                      ? " · fees calculated at order placement"
+                      : ""}
                   </p>
+                  {entryFee !== null ? (
+                    <dl className="mt-3 space-y-1 border-t border-border pt-3 text-sm tabular">
+                      <div className="flex justify-between gap-4">
+                        <dt className="text-muted-foreground">
+                          Entry fee ({formatPercent(entryFeeRate)})
+                        </dt>
+                        <dd className="text-ink">
+                          {formatMoney(entryFee, currency)}
+                        </dd>
+                      </div>
+                      <div className="flex justify-between gap-4 font-semibold">
+                        <dt className="text-ink">Estimated total</dt>
+                        <dd className="text-ink">
+                          {formatMoney(addDecimal(gross, entryFee), currency)}
+                        </dd>
+                      </div>
+                      <p className="pt-1 text-right text-xs font-normal text-muted-foreground">
+                        Final amount confirmed at order placement
+                      </p>
+                    </dl>
+                  ) : null}
                 </div>
 
                 <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-between">
@@ -579,14 +639,34 @@ function SubscriptionFlow({
                       label: "Gross amount",
                       value: formatMoney(gross, currency),
                     },
-                    {
-                      label: "Fees",
-                      value: (
-                        <span className="text-muted-foreground">
-                          Calculated at placement
-                        </span>
-                      ),
-                    },
+                    ...(entryFee === null
+                      ? [
+                          {
+                            label: "Fees",
+                            value: (
+                              <span className="text-muted-foreground">
+                                Calculated at placement
+                              </span>
+                            ),
+                          },
+                        ]
+                      : [
+                          {
+                            label: `Entry fee (${formatPercent(entryFeeRate)})`,
+                            value: formatMoney(entryFee, currency),
+                          },
+                          {
+                            label: "Estimated total",
+                            value: (
+                              <span className="font-semibold">
+                                {formatMoney(
+                                  addDecimal(gross, entryFee),
+                                  currency,
+                                )}
+                              </span>
+                            ),
+                          },
+                        ]),
                     { label: "Settlement", value: "Bank transfer" },
                   ]}
                 />
@@ -821,6 +901,7 @@ function OfferingSummary({
                 ? `${formatNumber(cfg.max_shares_per_investor)} shares`
                 : "—",
             },
+            ...offeringTerms(cfg).filter((t) => t.label !== "Compartment"),
           ]}
         />
       </PanelBody>

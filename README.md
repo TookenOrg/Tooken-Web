@@ -54,7 +54,7 @@ src/
     (public)/      landing, /explore, /real-estate/[id]
     (auth)/        /sign-in, /sign-up, /logout
     (investor)/    /dashboard, /orders, /verification, /profile, /favorites, /real-estate/[id]/buy
-    admin/         back office (/admin/compliance and /admin/platform are ADMIN only)
+    admin/         back office (/admin/compliance, /admin/platform and /admin/users are ADMIN only)
   components/
     app/           design system: shells, page header, panels, status badges, states…
     ui/            shadcn/ui primitives
@@ -84,5 +84,6 @@ With a local backend and an initialised platform:
 6. **Settlement** (investor): the order page updates live until the tokens are
    delivered on-chain; the dashboard shows the new holding.
 
-Staff accounts are promoted directly in the database (the API has no role
-management endpoint).
+An ADMIN promotes an account to MANAGER (or back to USER) from
+`/admin/users` (`PATCH /users/{id}/role`); the new role applies after the user's
+next token refresh or sign-in.

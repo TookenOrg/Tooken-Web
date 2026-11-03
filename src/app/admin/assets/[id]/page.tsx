@@ -28,7 +28,7 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { ApiError, errorMessage } from "@/lib/api/client";
+import { errorMessage } from "@/lib/api/client";
 import {
   useDeleteRealEstate,
   useIssuer,
@@ -46,13 +46,11 @@ import {
   formatNumber,
   formatPercent,
 } from "@/lib/format";
+import { missingFieldLabel, missingFieldsOf } from "@/lib/missing-fields";
+import { offeringTerms } from "@/lib/offering-terms";
 import { countryName, estateTypeLabel } from "@/lib/reference";
 import { AssetLifecycle } from "../_components/asset-lifecycle";
 import { AssetOrders } from "../_components/asset-orders";
-import {
-  missingFieldLabel,
-  parseMissingFields,
-} from "../_components/asset-payload";
 
 export default function AssetDetailPage() {
   const params = useParams<{ id: string }>();
@@ -359,10 +357,7 @@ function PublishError({
   assetId: number;
   onDismiss: () => void;
 }) {
-  const missing =
-    error instanceof ApiError && error.status === 409
-      ? parseMissingFields(error.message)
-      : [];
+  const missing = missingFieldsOf(error);
   return (
     <Alert variant="destructive">
       <AlertTriangle />
@@ -417,6 +412,7 @@ function Figure({ label, value }: { label: string; value: React.ReactNode }) {
 
 function OverviewTab({ asset: re }: { asset: RealEstate }) {
   const c = re.configuration;
+  const terms = offeringTerms(c);
   const s = re.specification;
   const a = re.address;
   const media = [...(re.media ?? [])].sort(
@@ -590,6 +586,21 @@ function OverviewTab({ asset: re }: { asset: RealEstate }) {
               ) : (
                 <p className="py-3 text-sm text-muted-foreground">
                   Address not available.
+                </p>
+              )}
+            </PanelBody>
+          </Panel>
+          <Panel>
+            <PanelHeader
+              title="Terms & fees"
+              description="Investment limits, charges and compartment."
+            />
+            <PanelBody className="py-2">
+              {terms.length ? (
+                <KeyValueList items={terms} />
+              ) : (
+                <p className="py-3 text-sm text-muted-foreground">
+                  No limits or fees configured.
                 </p>
               )}
             </PanelBody>

@@ -18,6 +18,7 @@ const STAFF: RegExp[] = [/^\/admin(\/|$)/];
 const ADMIN_ONLY: RegExp[] = [
   /^\/admin\/compliance(\/|$)/,
   /^\/admin\/platform(\/|$)/,
+  /^\/admin\/users(\/|$)/,
 ];
 
 const GUEST_ONLY = ["/sign-in", "/sign-up"];

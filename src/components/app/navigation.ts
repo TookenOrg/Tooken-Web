@@ -8,6 +8,7 @@ import {
   ReceiptText,
   ShieldCheck,
   Store,
+  UserCog,
   UserRound,
 } from "lucide-react";
 import type { NavSection } from "./app-shell";
@@ -73,6 +74,12 @@ export const ADMIN_NAV: NavSection[] = [
         label: "KYC reviews",
         href: "/admin/compliance",
         icon: FileCheck2,
+        visible: (s) => s.isAdmin,
+      },
+      {
+        label: "Access & roles",
+        href: "/admin/users",
+        icon: UserCog,
         visible: (s) => s.isAdmin,
       },
     ],

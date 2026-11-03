@@ -203,11 +203,7 @@ export function emptyAssetValues(): AssetFormValues {
 const str = (v: string | number | null | undefined) =>
   v === null || v === undefined ? "" : String(v);
 
-/**
- * Prefills the form from a stored asset. Fields the API does not send back
- * (investment bounds, fee rates, compartment) stay empty: the patch builder
- * then leaves them untouched unless the user types a value.
- */
+/** Prefills the form from a stored asset. */
 export function assetToFormValues(re: RealEstate): AssetFormValues {
   const base = emptyAssetValues();
   const a = re.address;
@@ -255,6 +251,12 @@ export function assetToFormValues(re: RealEstate): AssetFormValues {
       payment_frequency: str(c?.payment_frequency),
       payment_frequency_type_id: str(c?.payment_frequency_type_id),
       max_shares_per_investor: str(c?.max_shares_per_investor),
+      min_investment: str(c?.min_investment),
+      max_investment: str(c?.max_investment),
+      entry_fee_rate: str(c?.entry_fee_rate),
+      mgmt_fee_rate: str(c?.mgmt_fee_rate),
+      exit_fee_rate: str(c?.exit_fee_rate),
+      compartment_ref: str(c?.compartment_ref),
     },
     media: media
       .filter((m) => !!m.url)
@@ -440,41 +442,4 @@ export function buildPatchPayload(
     if (cover !== (coverUrl(initial.media) ?? "")) patch.imageurl = cover;
   }
   return patch;
-}
-
-/**
- * Publishing an incomplete asset answers 409 with a message ending in
- * "missing: a, b, c". Returns the field paths, or [] when absent.
- */
-export function parseMissingFields(message: string | undefined): string[] {
-  if (!message) return [];
-  const match = /missing:\s*(.+)$/i.exec(message);
-  if (!match) return [];
-  return match[1]
-    .split(",")
-    .map((s) => s.trim().replace(/\.$/, ""))
-    .filter(Boolean);
-}
-
-const FIELD_LABELS: Record<string, string> = {
-  title: "Name",
-  description: "Description",
-  media: "At least one image",
-  imageurl: "Cover image",
-  issuer: "Issuer",
-  issuer_id: "Issuer",
-  "configuration.total_shares": "Total shares",
-  "configuration.price_per_share": "Price per share",
-  "configuration.currency_code": "Currency",
-  "configuration.yield": "Target yield",
-  "configuration.payment_frequency": "Distribution frequency",
-  "configuration.payment_frequency_type_id": "Distribution period",
-  "configuration.max_shares_per_investor": "Max. shares per investor",
-};
-
-export function missingFieldLabel(path: string): string {
-  if (FIELD_LABELS[path]) return FIELD_LABELS[path];
-  const last = path.split(".").pop() ?? path;
-  const s = last.replace(/_/g, " ");
-  return s.charAt(0).toUpperCase() + s.slice(1);
 }
