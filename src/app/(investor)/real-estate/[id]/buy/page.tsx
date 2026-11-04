@@ -6,7 +6,6 @@ import {
   Ban,
   Building2,
   CheckCircle2,
-  Loader2,
   Minus,
   Plus,
   ShieldAlert,
@@ -28,6 +27,7 @@ import {
   KycStatusBadge,
   OrderStatusBadge,
 } from "@/components/app/status-badges";
+import { TookenLoader } from "@/components/app/tooken-loader";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
@@ -737,9 +737,7 @@ function SubscriptionFlow({
                     disabled={!ack.risk || !ack.terms || create.isPending}
                     className="bg-brand text-brand-foreground hover:bg-brand-light"
                   >
-                    {create.isPending ? (
-                      <Loader2 className="animate-spin" />
-                    ) : null}
+                    {create.isPending ? <TookenLoader size={16} /> : null}
                     {create.isError ? "Retry order" : "Place order"}
                   </Button>
                 </div>

@@ -5,7 +5,6 @@ import {
   Check,
   Clock,
   Fingerprint,
-  Loader2,
   ShieldCheck,
   X,
 } from "lucide-react";
@@ -18,6 +17,7 @@ import { PageHeader } from "@/components/app/page-header";
 import { Panel, PanelBody, PanelHeader } from "@/components/app/panel";
 import { PageSkeleton } from "@/components/app/states";
 import { KycStatusBadge } from "@/components/app/status-badges";
+import { TookenLoader } from "@/components/app/tooken-loader";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
@@ -298,7 +298,7 @@ function KycForm({ user, status }: { user: User; status: string }) {
               disabled={!certify || submit.isPending}
               className="bg-brand text-brand-foreground hover:bg-brand-light"
             >
-              {submit.isPending ? <Loader2 className="animate-spin" /> : null}
+              {submit.isPending ? <TookenLoader size={16} /> : null}
               Submit for review
             </Button>
           </div>

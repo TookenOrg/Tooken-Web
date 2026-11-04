@@ -26,6 +26,10 @@ export const metadata: Metadata = {
   },
   description:
     "Institutional-grade platform to tokenize, distribute and settle real estate securities on-chain.",
+  icons: {
+    icon: { url: "/favicon.svg", type: "image/svg+xml" },
+    apple: { url: "/apple-touch-icon.png", sizes: "180x180" },
+  },
 };
 
 export const viewport: Viewport = {

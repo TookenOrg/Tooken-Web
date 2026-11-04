@@ -1,4 +1,5 @@
-import { Check, Loader2, X } from "lucide-react";
+import { Check, X } from "lucide-react";
+import { TookenLoader } from "@/components/app/tooken-loader";
 import type { TimelineStep } from "@/lib/status";
 import { cn } from "@/lib/utils";
 
@@ -45,7 +46,7 @@ export function StepTimeline({
             ) : step.state === "failed" ? (
               <X className="size-3.5" aria-hidden />
             ) : step.state === "current" && live ? (
-              <Loader2 className="size-3.5 animate-spin" aria-hidden />
+              <TookenLoader size={14} />
             ) : (
               i + 1
             )}

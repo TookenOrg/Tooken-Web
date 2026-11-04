@@ -72,7 +72,7 @@ export function AuthShell({
         </div>
 
         <Image
-          src="/logo-transparent_3000.png"
+          src="/tooken-icon-transparent.svg"
           alt=""
           width={520}
           height={520}

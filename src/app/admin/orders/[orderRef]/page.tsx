@@ -5,7 +5,6 @@ import {
   Banknote,
   CheckCircle2,
   Clock,
-  Loader2,
   ShieldAlert,
 } from "lucide-react";
 import Link from "next/link";
@@ -21,6 +20,7 @@ import {
   OrderStatusBadge,
   RealEstateStatusBadge,
 } from "@/components/app/status-badges";
+import { TookenLoader } from "@/components/app/tooken-loader";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { ApiError } from "@/lib/api/client";
@@ -230,7 +230,7 @@ function OrderDetail({ order }: { order: IssuanceOrder }) {
               </Alert>
             ) : settling ? (
               <Alert className="border-cyan-200 bg-cyan-50">
-                <Loader2 className="animate-spin" />
+                <TookenLoader size={16} />
                 <AlertTitle>Settlement in progress</AlertTitle>
                 <AlertDescription>
                   Payment recorded. Security tokens are being minted to the

@@ -5,7 +5,7 @@ import { cn } from "@/lib/utils";
 export function BrandMark({ className }: { className?: string }) {
   return (
     <Image
-      src="/logo-transparent_3000.png"
+      src="/tooken-icon-transparent.svg"
       alt=""
       width={36}
       height={36}

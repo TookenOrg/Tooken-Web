@@ -1,13 +1,14 @@
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
-import { AlertCircle, Eye, EyeOff, Loader2, UserRound } from "lucide-react";
+import { AlertCircle, Eye, EyeOff, UserRound } from "lucide-react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useState } from "react";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
 import { FormField } from "@/components/app/form-field";
+import { PageLoader, TookenLoader } from "@/components/app/tooken-loader";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -138,7 +139,7 @@ function SignInForm() {
         >
           {isSubmitting ? (
             <>
-              <Loader2 className="animate-spin" /> Signing in…
+              <TookenLoader size={16} /> Signing in…
             </>
           ) : (
             "Sign in"
@@ -196,7 +197,7 @@ export default function SignInPage() {
       title="Sign in"
       subtitle="Access your investor workspace or the issuer back office."
     >
-      <Suspense fallback={null}>
+      <Suspense fallback={<PageLoader className="min-h-64" />}>
         <SignInForm />
       </Suspense>
     </AuthShell>

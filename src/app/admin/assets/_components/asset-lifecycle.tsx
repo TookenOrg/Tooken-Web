@@ -1,4 +1,5 @@
-import { Check, Circle, Loader2 } from "lucide-react";
+import { Check, Circle } from "lucide-react";
+import { TookenLoader } from "@/components/app/tooken-loader";
 import { cn } from "@/lib/utils";
 
 const STEPS = [
@@ -59,7 +60,7 @@ export function AssetLifecycle({
               )}
             >
               {pending ? (
-                <Loader2 className="size-3.5 animate-spin" />
+                <TookenLoader size={14} />
               ) : done ? (
                 <Check className="size-3.5" />
               ) : current ? (

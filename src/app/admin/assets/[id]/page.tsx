@@ -4,7 +4,6 @@ import {
   AlertTriangle,
   ExternalLink,
   Landmark,
-  Loader2,
   Pencil,
   Rocket,
   Trash2,
@@ -24,6 +23,7 @@ import {
   IssuerStatusBadge,
   RealEstateStatusBadge,
 } from "@/components/app/status-badges";
+import { TookenLoader } from "@/components/app/tooken-loader";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -179,11 +179,7 @@ export default function AssetDetailPage() {
                 disabled={publish.isPending}
                 onClick={() => setConfirm("publish")}
               >
-                {publish.isPending ? (
-                  <Loader2 className="animate-spin" />
-                ) : (
-                  <Rocket />
-                )}
+                {publish.isPending ? <TookenLoader size={16} /> : <Rocket />}
                 Publish & tokenize
               </Button>
             ) : null}
@@ -193,11 +189,7 @@ export default function AssetDetailPage() {
                 disabled={open.isPending}
                 onClick={() => setConfirm("open")}
               >
-                {open.isPending ? (
-                  <Loader2 className="animate-spin" />
-                ) : (
-                  <Unlock />
-                )}
+                {open.isPending ? <TookenLoader size={16} /> : <Unlock />}
                 Open fundraising
               </Button>
             ) : null}
@@ -665,7 +657,7 @@ function TokenTab({
         <PanelBody className="py-2">
           {infos.isLoading ? (
             <p className="flex items-center gap-2 py-3 text-sm text-muted-foreground">
-              <Loader2 className="size-4 animate-spin" /> Querying the network…
+              <TookenLoader size={16} /> Querying the network…
             </p>
           ) : onChain ? (
             <KeyValueList

@@ -1,13 +1,14 @@
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
-import { AlertCircle, Eye, EyeOff, Loader2 } from "lucide-react";
+import { AlertCircle, Eye, EyeOff } from "lucide-react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useState } from "react";
 import { Controller, useForm } from "react-hook-form";
 import { z } from "zod";
 import { FormField } from "@/components/app/form-field";
+import { PageLoader, TookenLoader } from "@/components/app/tooken-loader";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -278,7 +279,7 @@ function SignUpForm() {
         >
           {isSubmitting ? (
             <>
-              <Loader2 className="animate-spin" /> Creating account…
+              <TookenLoader size={16} /> Creating account…
             </>
           ) : (
             "Create account"
@@ -305,7 +306,7 @@ export default function SignUpPage() {
       title="Open an investor account"
       subtitle="Create your access, then complete identity verification to subscribe to offerings."
     >
-      <Suspense fallback={null}>
+      <Suspense fallback={<PageLoader className="min-h-64" />}>
         <SignUpForm />
       </Suspense>
     </AuthShell>

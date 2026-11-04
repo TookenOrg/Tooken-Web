@@ -1,7 +1,7 @@
 "use client";
 
-import { Loader2 } from "lucide-react";
 import { useEffect } from "react";
+import { TookenLoader } from "@/components/app/tooken-loader";
 import { useSession } from "@/lib/auth/session-context";
 
 export default function LogoutPage() {
@@ -13,8 +13,8 @@ export default function LogoutPage() {
   }, [signOut]);
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-ink text-white/70">
-      <Loader2 className="mr-2 size-4 animate-spin" /> Signing out…
-    </div>
+    <output className="flex min-h-screen flex-col items-center justify-center gap-4 bg-ink text-sm text-white/70">
+      <TookenLoader size={56} /> Signing out…
+    </output>
   );
 }

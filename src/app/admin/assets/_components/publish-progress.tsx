@@ -1,8 +1,8 @@
 "use client";
 
-import { Loader2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Panel, PanelBody } from "@/components/app/panel";
+import { TookenLoader } from "@/components/app/tooken-loader";
 import { Progress } from "@/components/ui/progress";
 
 const PUBLISH_STEPS = [
@@ -25,7 +25,7 @@ export function PublishProgress() {
       <output aria-live="polite" className="block">
         <PanelBody className="space-y-3">
           <div className="flex items-center gap-3">
-            <Loader2 className="size-5 animate-spin text-amber-600" />
+            <TookenLoader size={20} />
             <div>
               <p className="text-sm font-semibold text-ink">
                 Deploying ERC-3643 token…

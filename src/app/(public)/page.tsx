@@ -153,7 +153,7 @@ function HeroVisual({ estate }: { estate?: RealEstateSummary }) {
   return (
     <div className="relative mx-auto w-full max-w-md">
       <Image
-        src="/logo-transparent_3000.png"
+        src="/tooken-icon-transparent.svg"
         alt=""
         width={480}
         height={480}

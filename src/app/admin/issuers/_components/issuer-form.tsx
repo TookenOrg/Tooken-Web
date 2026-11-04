@@ -1,11 +1,11 @@
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
-import { Loader2 } from "lucide-react";
 import Link from "next/link";
 import { Controller, useForm } from "react-hook-form";
 import { z } from "zod";
 import { FormField } from "@/components/app/form-field";
+import { TookenLoader } from "@/components/app/tooken-loader";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -295,7 +295,7 @@ export function IssuerForm({
           disabled={submitting || (mode === "edit" && !isDirty)}
           className="bg-brand text-brand-foreground hover:bg-brand-light"
         >
-          {submitting ? <Loader2 className="animate-spin" /> : null}
+          {submitting ? <TookenLoader size={16} /> : null}
           {mode === "create" ? "Create issuer" : "Save changes"}
         </Button>
       </div>

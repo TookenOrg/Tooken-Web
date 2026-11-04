@@ -6,7 +6,6 @@ import {
   ArrowDown,
   ArrowUp,
   ImageIcon,
-  Loader2,
   Plus,
   Star,
   Trash2,
@@ -24,6 +23,7 @@ import {
 } from "react-hook-form";
 import { FormField } from "@/components/app/form-field";
 import { Panel, PanelBody, PanelHeader } from "@/components/app/panel";
+import { TookenLoader } from "@/components/app/tooken-loader";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -581,7 +581,7 @@ export function AssetForm({
               disabled={submitting || (mode === "edit" && !isDirty)}
               className="bg-brand text-brand-foreground hover:bg-brand-light"
             >
-              {submitting ? <Loader2 className="animate-spin" /> : null}
+              {submitting ? <TookenLoader size={16} /> : null}
               {mode === "create" ? "Create draft" : "Save changes"}
             </Button>
           </div>

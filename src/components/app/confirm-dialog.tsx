@@ -1,6 +1,6 @@
 "use client";
 
-import { Loader2 } from "lucide-react";
+import { TookenLoader } from "@/components/app/tooken-loader";
 import {
   AlertDialog,
   AlertDialogCancel,
@@ -53,7 +53,7 @@ export function ConfirmDialog({
             onClick={onConfirm}
             disabled={pending}
           >
-            {pending ? <Loader2 className="animate-spin" /> : null}
+            {pending ? <TookenLoader size={16} /> : null}
             {confirmLabel}
           </Button>
         </AlertDialogFooter>

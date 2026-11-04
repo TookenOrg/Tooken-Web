@@ -1,6 +1,6 @@
 "use client";
 
-import { Ban, Building2, Loader2, Plus } from "lucide-react";
+import { Ban, Building2, Plus } from "lucide-react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useState } from "react";
@@ -21,6 +21,7 @@ import {
   IssuerStatusBadge,
   RealEstateStatusBadge,
 } from "@/components/app/status-badges";
+import { TookenLoader } from "@/components/app/tooken-loader";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import {
@@ -332,7 +333,7 @@ function StatusPanel({ issuer }: { issuer: Issuer }) {
           disabled={!changed || update.isPending}
           onClick={apply}
         >
-          {update.isPending ? <Loader2 className="animate-spin" /> : null}
+          {update.isPending ? <TookenLoader size={16} /> : null}
           Update status
         </Button>
       </PanelBody>
