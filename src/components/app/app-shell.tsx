@@ -15,7 +15,7 @@ import { useSession } from "@/lib/auth/session-context";
 import { cn } from "@/lib/utils";
 import { Brand } from "./brand";
 import { HealthIndicator } from "./health-indicator";
-import { roleLabel, UserAvatar, UserMenu } from "./user-menu";
+import { AccountSummary, UserMenu } from "./user-menu";
 
 export type NavItem = {
   label: string;
@@ -106,26 +106,6 @@ function SidebarNav({
   );
 }
 
-function SidebarFooter() {
-  const { user, claims, role } = useSession();
-  const name = user?.full_name ?? claims?.email ?? "";
-  return (
-    <div className="border-t border-sidebar-border p-3">
-      <div className="flex items-center gap-3 rounded-md px-2 py-2">
-        <UserAvatar name={name} />
-        <div className="min-w-0 flex-1">
-          <div className="truncate text-sm font-medium text-white">
-            {name || "…"}
-          </div>
-          <div className="truncate text-[11px] text-white/50">
-            {roleLabel(role)}
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 function SidebarContent({
   sections,
   brandSuffix,
@@ -143,7 +123,7 @@ function SidebarContent({
         <Brand href={homeHref} suffix={brandSuffix} />
       </div>
       <SidebarNav sections={sections} onNavigate={onNavigate} />
-      <SidebarFooter />
+      <AccountSummary className="border-sidebar-border" />
     </div>
   );
 }

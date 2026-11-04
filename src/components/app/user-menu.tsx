@@ -58,6 +58,27 @@ export function UserAvatar({
   );
 }
 
+/** Signed-in account summary shown at the bottom of dark navigation drawers. */
+export function AccountSummary({ className }: { className?: string }) {
+  const { user, claims, role } = useSession();
+  const name = user?.full_name ?? claims?.email ?? "";
+  return (
+    <div className={cn("border-t border-white/10 p-3", className)}>
+      <div className="flex items-center gap-3 rounded-md px-2 py-2">
+        <UserAvatar name={name} />
+        <div className="min-w-0 flex-1">
+          <div className="truncate text-sm font-medium text-white">
+            {name || "…"}
+          </div>
+          <div className="truncate text-[11px] text-white/50">
+            {roleLabel(role)}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function UserMenu({ tone = "light" }: { tone?: "light" | "dark" }) {
   const { ready, user, claims, role, isStaff, isInvestor } = useSession();
   const name = user?.full_name ?? claims?.email ?? "Account";
@@ -103,6 +124,7 @@ export function UserMenu({ tone = "light" }: { tone?: "light" | "dark" }) {
       <DropdownMenuContent align="end" className="w-60">
         <DropdownMenuLabel className="font-normal">
           <div className="truncate text-sm font-medium">{name}</div>
+          <div className="truncate text-xs text-ink/70">{roleLabel(role)}</div>
           <div className="truncate text-xs text-muted-foreground">
             {user?.email ?? claims?.email}
           </div>

@@ -15,7 +15,7 @@ import { homeFor } from "@/lib/auth/routes";
 import { useSession } from "@/lib/auth/session-context";
 import { cn } from "@/lib/utils";
 import { Brand } from "./brand";
-import { UserMenu } from "./user-menu";
+import { AccountSummary, UserMenu } from "./user-menu";
 
 const LINKS = [
   { label: "Marketplace", href: "/explore" },
@@ -99,7 +99,10 @@ export function PublicHeader() {
             <div className="flex h-16 items-center border-b border-white/10 px-5">
               <Brand />
             </div>
-            <nav className="flex flex-col gap-1 p-3" aria-label="Mobile">
+            <nav
+              className="flex flex-1 flex-col gap-1 overflow-y-auto p-3"
+              aria-label="Mobile"
+            >
               {LINKS.map((l) => (
                 <Link
                   key={l.href}
@@ -148,6 +151,7 @@ export function PublicHeader() {
                 </>
               )}
             </nav>
+            {ready && isAuthenticated ? <AccountSummary /> : null}
           </SheetContent>
         </Sheet>
       </div>
