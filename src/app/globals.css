@@ -134,6 +134,17 @@
     @apply border-border outline-ring/50;
   }
 
+  /* Reserve the scrollbar space so content does not shift between short and long views. */
+  html {
+    scrollbar-gutter: stable;
+  }
+
+  /* The gutter already reserves the space Radix scroll lock would compensate for. */
+  html body[data-scroll-locked] {
+    /* biome-ignore lint/complexity/noImportantStyles: overrides the !important margin injected by react-remove-scroll */
+    margin-right: 0 !important;
+  }
+
   body {
     @apply bg-background text-foreground font-sans;
     font-feature-settings: "cv11", "ss01";
