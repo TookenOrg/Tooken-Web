@@ -159,24 +159,23 @@ export default function ExplorePage() {
 
   return (
     <>
-      <section className="bg-ink text-white">
-        <div className="mx-auto max-w-7xl px-4 py-12 sm:px-6 lg:px-8 lg:py-16">
-          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-brand">
-            Marketplace
+      <section className="border-b border-border">
+        <div className="mx-auto max-w-7xl px-5 py-12 sm:px-8 lg:py-16">
+          <p className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
+            The asset collection
           </p>
-          <h1 className="mt-3 text-3xl font-semibold sm:text-4xl">
-            Tokenized real estate offerings
+          <h1 className="mt-4 font-editorial text-5xl font-normal tracking-tight text-ink sm:text-6xl">
+            Find your perspective.
           </h1>
-          <p className="mt-3 max-w-2xl text-sm text-white/60 sm:text-base">
-            Fractional interests in professionally managed assets, issued as
-            ERC-3643 security tokens by regulated vehicles. Subscriptions are
-            open to verified investors.
+          <p className="mt-5 max-w-xl text-sm leading-relaxed text-muted-foreground sm:text-base">
+            Explore the offerings, compare the terms and read the documents.
+            Subscriptions are available to verified investors. Capital at risk.
           </p>
         </div>
       </section>
 
-      <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
-        <div className="flex flex-col gap-3 rounded-lg border border-border bg-card p-3 shadow-[0_1px_2px_rgb(16_24_40/0.04)] lg:flex-row lg:items-center">
+      <div className="mx-auto max-w-7xl px-5 py-8 sm:px-8">
+        <div className="flex flex-col gap-3 border-b border-border pb-5 lg:flex-row lg:items-center">
           <div className="relative flex-1">
             <Search
               className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground"

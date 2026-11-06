@@ -73,7 +73,7 @@ function Gallery({ estate }: { estate: RealEstate }) {
 
   if (!current?.url) {
     return (
-      <div className="bg-animated-gradient-dark flex aspect-[16/9] items-center justify-center rounded-lg">
+      <div className="flex aspect-[16/9] items-center justify-center rounded-sm bg-ink">
         <Building2 className="size-14 text-white/20" aria-hidden />
         <span className="sr-only">No photo available</span>
       </div>
@@ -82,7 +82,7 @@ function Gallery({ estate }: { estate: RealEstate }) {
 
   return (
     <div className="space-y-2">
-      <div className="relative aspect-[16/9] overflow-hidden rounded-lg bg-ink">
+      <div className="relative aspect-[16/9] overflow-hidden rounded-sm bg-ink">
         <Image
           key={current.url}
           src={current.url}
@@ -584,7 +584,7 @@ export default function RealEstateDetailPage() {
               {estateTypeLabel(estate.estate_type, estate.estate_type_id)}
             </span>
           </div>
-          <h1 className="mt-2 text-2xl font-semibold text-ink sm:text-3xl">
+          <h1 className="mt-3 font-editorial text-4xl font-normal tracking-tight text-ink sm:text-5xl">
             {title}
           </h1>
           {location ? (

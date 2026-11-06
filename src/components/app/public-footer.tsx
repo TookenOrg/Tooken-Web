@@ -3,59 +3,55 @@ import { Brand } from "./brand";
 
 export function PublicFooter() {
   return (
-    <footer className="border-t border-white/5 bg-ink-3 text-white/60">
-      <div className="mx-auto grid max-w-7xl gap-10 px-4 py-12 sm:px-6 md:grid-cols-4 lg:px-8">
+    <footer className="border-t border-border bg-background text-muted-foreground">
+      <div className="mx-auto grid max-w-7xl gap-10 px-5 py-12 sm:px-8 md:grid-cols-4">
         <div className="space-y-3 md:col-span-2">
-          <Brand />
-          <p className="max-w-sm text-sm">
-            Regulated-grade infrastructure to tokenize, distribute and settle
-            real estate securities on ERC-3643 rails.
+          <Brand tone="dark" />
+          <p className="max-w-xs text-sm leading-relaxed">
+            Real-world assets. Digital ownership. Infrastructure for asset
+            tokenization, built on ERC-3643.
           </p>
         </div>
         <div>
-          <h3 className="mb-3 text-xs font-semibold uppercase tracking-wider text-white/80">
-            Platform
-          </h3>
+          <h3 className="mb-4 text-xs font-medium text-ink">Platform</h3>
           <ul className="space-y-2 text-sm">
             <li>
-              <Link href="/explore" className="hover:text-white">
+              <Link href="/explore" className="hover:text-ink">
                 Marketplace
               </Link>
             </li>
             <li>
-              <Link href="/#how-it-works" className="hover:text-white">
+              <Link href="/#how-it-works" className="hover:text-ink">
                 How it works
               </Link>
             </li>
             <li>
-              <Link href="/#institutions" className="hover:text-white">
+              <Link href="/#institutions" className="hover:text-ink">
                 For institutions
               </Link>
             </li>
           </ul>
         </div>
         <div>
-          <h3 className="mb-3 text-xs font-semibold uppercase tracking-wider text-white/80">
-            Account
-          </h3>
+          <h3 className="mb-4 text-xs font-medium text-ink">Account</h3>
           <ul className="space-y-2 text-sm">
             <li>
-              <Link href="/sign-in" className="hover:text-white">
+              <Link href="/sign-in" className="hover:text-ink">
                 Sign in
               </Link>
             </li>
             <li>
-              <Link href="/sign-up" className="hover:text-white">
+              <Link href="/sign-up" className="hover:text-ink">
                 Open an account
               </Link>
             </li>
           </ul>
         </div>
       </div>
-      <div className="border-t border-white/5">
-        <div className="mx-auto flex max-w-7xl flex-col gap-2 px-4 py-5 text-xs sm:flex-row sm:items-center sm:justify-between sm:px-6 lg:px-8">
+      <div className="border-t border-border">
+        <div className="mx-auto flex max-w-7xl flex-col gap-3 px-5 py-6 text-xs sm:px-8 md:flex-row md:items-center md:justify-between">
           <span>© {new Date().getFullYear()} Tooken. All rights reserved.</span>
-          <span>
+          <span className="max-w-xl leading-relaxed">
             Investing in unlisted securities carries a risk of capital loss and
             limited liquidity.
           </span>

@@ -104,7 +104,7 @@ export function RealEstateCard({
   return (
     <article
       className={cn(
-        "group relative flex overflow-hidden rounded-lg border border-border bg-card shadow-[0_1px_2px_rgb(16_24_40/0.04)] transition hover:border-ink/20 hover:shadow-md focus-within:ring-2 focus-within:ring-ring",
+        "group relative flex overflow-hidden rounded-sm border border-border bg-card transition-colors hover:border-ink/35 focus-within:ring-2 focus-within:ring-ring",
         list ? "flex-col sm:flex-row" : "flex-col",
         className,
       )}
@@ -129,7 +129,7 @@ export function RealEstateCard({
             className="object-cover transition duration-500 group-hover:scale-[1.03]"
           />
         ) : (
-          <div className="bg-animated-gradient-dark flex size-full items-center justify-center">
+          <div className="flex size-full items-center justify-center bg-ink">
             <Building2 className="size-10 text-white/25" aria-hidden />
           </div>
         )}
@@ -147,7 +147,7 @@ export function RealEstateCard({
         <p className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
           {estateTypeLabel(estate.estate_type, estate.estate_type_id)}
         </p>
-        <h3 className="mt-1 truncate text-base font-semibold text-ink">
+        <h3 className="mt-2 truncate text-lg font-medium tracking-tight text-ink">
           <Link
             href={link}
             className="after:absolute after:inset-0 focus-visible:outline-none"
@@ -201,7 +201,7 @@ export function RealEstateCard({
               </span>
             </div>
             <div
-              className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-muted"
+              className="mt-2 h-1 overflow-hidden bg-muted"
               role="progressbar"
               aria-label="Subscribed"
               aria-valuemin={0}
@@ -209,7 +209,7 @@ export function RealEstateCard({
               aria-valuenow={Math.round(funded)}
             >
               <div
-                className="h-full rounded-full bg-brand"
+                className="h-full bg-brand"
                 style={{ width: `${Math.max(funded, funded > 0 ? 1.5 : 0)}%` }}
               />
             </div>

@@ -42,7 +42,14 @@ export function Brand({
         Tooken
       </span>
       {suffix ? (
-        <span className="rounded border border-brand/40 bg-brand/10 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-brand">
+        <span
+          className={cn(
+            "border-l pl-2 text-[9px] font-medium uppercase tracking-wider",
+            tone === "light"
+              ? "border-white/25 text-white/65"
+              : "border-border text-muted-foreground",
+          )}
+        >
           {suffix}
         </span>
       ) : null}

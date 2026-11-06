@@ -48,7 +48,7 @@ export function UserAvatar({
   return (
     <span
       className={cn(
-        "flex size-8 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-amber-400 to-amber-600 text-xs font-semibold text-ink-3",
+        "flex size-8 shrink-0 items-center justify-center rounded-full bg-brand text-xs font-semibold text-ink-3",
         className,
       )}
       aria-hidden
@@ -58,19 +58,41 @@ export function UserAvatar({
   );
 }
 
-/** Signed-in account summary shown at the bottom of dark navigation drawers. */
-export function AccountSummary({ className }: { className?: string }) {
+/** Signed-in account summary shown at the bottom of navigation drawers. */
+export function AccountSummary({
+  className,
+  tone = "dark",
+}: {
+  className?: string;
+  tone?: "light" | "dark";
+}) {
   const { user, claims, role } = useSession();
   const name = user?.full_name ?? claims?.email ?? "";
   return (
-    <div className={cn("border-t border-white/10 p-3", className)}>
+    <div
+      className={cn(
+        "border-t p-3",
+        tone === "dark" ? "border-white/10" : "border-border",
+        className,
+      )}
+    >
       <div className="flex items-center gap-3 rounded-md px-2 py-2">
         <UserAvatar name={name} />
         <div className="min-w-0 flex-1">
-          <div className="truncate text-sm font-medium text-white">
+          <div
+            className={cn(
+              "truncate text-sm font-medium",
+              tone === "dark" ? "text-white" : "text-ink",
+            )}
+          >
             {name || "…"}
           </div>
-          <div className="truncate text-[11px] text-white/50">
+          <div
+            className={cn(
+              "truncate text-[11px]",
+              tone === "dark" ? "text-white/50" : "text-muted-foreground",
+            )}
+          >
             {roleLabel(role)}
           </div>
         </div>

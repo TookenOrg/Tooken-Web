@@ -9,7 +9,7 @@ export default function InvestorLayout({
   children: React.ReactNode;
 }) {
   return (
-    <AppShell sections={INVESTOR_NAV} homeHref="/dashboard">
+    <AppShell sections={INVESTOR_NAV} homeHref="/">
       {children}
     </AppShell>
   );

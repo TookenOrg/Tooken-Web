@@ -9,7 +9,7 @@ export default function AdminLayout({
   children: React.ReactNode;
 }) {
   return (
-    <AppShell sections={ADMIN_NAV} homeHref="/admin" brandSuffix="Back office">
+    <AppShell sections={ADMIN_NAV} homeHref="/" brandSuffix="Back office">
       {children}
     </AppShell>
   );

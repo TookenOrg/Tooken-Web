@@ -46,7 +46,7 @@ function SidebarNav({
   const session = useSession();
   return (
     <nav
-      className="flex-1 space-y-6 overflow-y-auto px-3 py-4"
+      className="flex-1 space-y-8 overflow-y-auto px-4 py-7"
       aria-label="Main"
     >
       {sections.map((section, si) => {
@@ -57,11 +57,11 @@ function SidebarNav({
         return (
           <div key={section.title ?? si}>
             {section.title ? (
-              <div className="px-3 pb-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-white/35">
+              <div className="px-3 pb-3 text-[10px] font-medium uppercase tracking-[0.14em] text-sidebar-foreground">
                 {section.title}
               </div>
             ) : null}
-            <ul className="space-y-0.5">
+            <ul className="space-y-1">
               {items.map((item) => {
                 const active = isActive(pathname, item);
                 return (
@@ -71,15 +71,15 @@ function SidebarNav({
                       onClick={onNavigate}
                       aria-current={active ? "page" : undefined}
                       className={cn(
-                        "group relative flex items-center gap-3 rounded-md px-3 py-2 text-sm transition",
+                        "group relative flex items-center gap-3 rounded-sm px-3 py-2.5 text-sm transition-colors",
                         active
-                          ? "bg-white/[0.07] font-medium text-white"
-                          : "text-sidebar-foreground hover:bg-white/[0.04] hover:text-white",
+                          ? "bg-sidebar-accent font-medium text-sidebar-accent-foreground"
+                          : "text-sidebar-foreground hover:bg-sidebar-accent/60 hover:text-sidebar-accent-foreground",
                       )}
                     >
                       {active ? (
                         <span
-                          className="absolute inset-y-1.5 left-0 w-0.5 rounded-full bg-brand"
+                          className="absolute inset-y-2 left-0 w-0.5 bg-brand"
                           aria-hidden
                         />
                       ) : null}
@@ -87,8 +87,8 @@ function SidebarNav({
                         className={cn(
                           "size-4 shrink-0",
                           active
-                            ? "text-brand"
-                            : "text-white/45 group-hover:text-white/80",
+                            ? "text-amber-700"
+                            : "text-sidebar-foreground group-hover:text-sidebar-accent-foreground",
                         )}
                         aria-hidden
                       />
@@ -118,18 +118,18 @@ function SidebarContent({
   onNavigate?: () => void;
 }) {
   return (
-    <div className="flex h-full flex-col bg-sidebar">
-      <div className="flex h-16 shrink-0 items-center border-b border-sidebar-border px-5">
-        <Brand href={homeHref} suffix={brandSuffix} />
+    <div className="flex h-full flex-col border-r border-sidebar-border bg-sidebar">
+      <div className="flex h-20 shrink-0 items-center border-b border-sidebar-border px-6">
+        <Brand href={homeHref} suffix={brandSuffix} tone="dark" />
       </div>
       <SidebarNav sections={sections} onNavigate={onNavigate} />
-      <AccountSummary className="border-sidebar-border" />
+      <AccountSummary tone="light" className="border-sidebar-border" />
     </div>
   );
 }
 
 /**
- * Authenticated layout: fixed dark sidebar on desktop, drawer on mobile, and
+ * Authenticated layout: fixed sidebar on desktop, drawer on mobile, and
  * a light content area where every page renders its own PageHeader.
  */
 export function AppShell({
@@ -157,7 +157,7 @@ export function AppShell({
       </aside>
 
       <div className="lg:pl-64">
-        <header className="sticky top-0 z-30 flex h-16 items-center gap-3 border-b border-border bg-white/90 px-4 backdrop-blur supports-[backdrop-filter]:bg-white/75 sm:px-6">
+        <header className="sticky top-0 z-30 flex h-20 items-center gap-3 border-b border-border bg-background px-4 sm:px-8">
           <Sheet open={open} onOpenChange={setOpen}>
             <SheetTrigger
               className="-ml-1 rounded-md p-2 text-ink hover:bg-muted lg:hidden"
@@ -167,7 +167,7 @@ export function AppShell({
             </SheetTrigger>
             <SheetContent
               side="left"
-              className="w-72 border-0 p-0 [&>button]:text-white"
+              className="w-72 border-0 p-0 [&>button]:text-ink"
             >
               <SheetTitle className="sr-only">Navigation</SheetTitle>
               <SidebarContent
@@ -181,13 +181,17 @@ export function AppShell({
           <div className="lg:hidden">
             <Brand href={homeHref} tone="dark" />
           </div>
+          <span className="hidden text-xs text-muted-foreground lg:block">
+            Tooken <span className="mx-3 text-border">/</span>
+            {brandSuffix || "Investor workspace"}
+          </span>
           <div className="flex flex-1 items-center justify-end gap-2 sm:gap-3">
             {topbarExtra}
             <HealthIndicator />
             <UserMenu />
           </div>
         </header>
-        <main className="mx-auto w-full max-w-[1400px] px-4 py-6 sm:px-6 md:py-8 lg:px-8">
+        <main className="mx-auto w-full max-w-[1400px] px-4 py-7 sm:px-8 md:py-10">
           {children}
         </main>
       </div>
