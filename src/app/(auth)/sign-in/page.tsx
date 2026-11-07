@@ -180,7 +180,7 @@ function SignInForm() {
         </Button>
       </form>
 
-      {process.env.NEXT_PUBLIC_DEMO_MODE === "true" ? (
+      {process.env.PUBLIC_DEMO_MODE === "true" ? (
         <section
           aria-label="Demo accounts"
           className="mt-6 rounded-md border border-dashed border-border bg-muted/40 p-3"

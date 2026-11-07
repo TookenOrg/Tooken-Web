@@ -40,7 +40,7 @@ afterEach(() => {
 
 describe("OrderPaymentSection", () => {
   it("shows the amount but not illustrative bank details outside demo mode", () => {
-    vi.stubEnv("NEXT_PUBLIC_DEMO_MODE", "false");
+    vi.stubEnv("PUBLIC_DEMO_MODE", "false");
     render(paymentSection(order));
     expect(screen.getByText("€202.00")).toBeInTheDocument();
     expect(

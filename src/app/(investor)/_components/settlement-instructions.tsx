@@ -19,7 +19,7 @@ export function SettlementInstructions({
   orderRef: string;
   className?: string;
 }) {
-  const isDemo = process.env.NEXT_PUBLIC_DEMO_MODE === "true";
+  const isDemo = process.env.PUBLIC_DEMO_MODE === "true";
   return (
     <Panel className={className}>
       <PanelHeader
@@ -44,14 +44,14 @@ export function SettlementInstructions({
             },
             ...(isDemo
               ? [
-                  { label: "Beneficiary", value: "Tooken Escrow S.A. (demo)" },
-                  {
-                    label: "IBAN",
-                    value: <HashValue value={DEMO_IBAN} full />,
-                    hint: "Demonstration account",
-                  },
-                  { label: "BIC", value: DEMO_BIC, mono: true },
-                ]
+                { label: "Beneficiary", value: "Tooken Escrow S.A. (demo)" },
+                {
+                  label: "IBAN",
+                  value: <HashValue value={DEMO_IBAN} full />,
+                  hint: "Demonstration account",
+                },
+                { label: "BIC", value: DEMO_BIC, mono: true },
+              ]
               : []),
           ]}
         />

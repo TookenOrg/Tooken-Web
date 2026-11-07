@@ -188,22 +188,22 @@ export default function LandingPage() {
                     </div>
                   ))
                 ) : (
-                  <div className="flex h-full flex-col justify-between bg-ink p-7 text-white sm:p-10">
-                    <p className="font-mono text-xs text-white/65">
+                  <div className="flex h-full flex-col justify-between border border-border bg-muted p-7 text-ink sm:p-10">
+                    <p className="font-mono text-xs text-muted-foreground">
                       RWA / REAL-WORLD ASSETS
                     </p>
                     <div className="py-8">
                       <p className="font-editorial text-4xl leading-tight tracking-tight sm:text-5xl">
                         The asset is real.
                         <br />
-                        <em className="text-brand">Ownership evolves.</em>
+                        <em className="text-amber-700">Ownership evolves.</em>
                       </p>
-                      <p className="mt-6 max-w-xs text-sm leading-relaxed text-white/70">
+                      <p className="mt-6 max-w-xs text-sm leading-relaxed text-muted-foreground">
                         A common token standard. An offering structure defined
                         for each asset.
                       </p>
                     </div>
-                    <p className="border-t border-white/20 pt-5 text-xs text-white/70">
+                    <p className="border-t border-border pt-5 text-xs text-muted-foreground">
                       ERC-3643 · Permissioned ownership
                     </p>
                   </div>
