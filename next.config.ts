@@ -7,6 +7,10 @@ const backendUrl = (
 const nextConfig: NextConfig = {
   reactCompiler: true,
 
+  // DEMO_MODE gates illustrative accounts and bank details rendered by client
+  // components, so it must be inlined into the browser bundle at build time.
+  env: { DEMO_MODE: process.env.DEMO_MODE ?? "false" },
+
   // The browser only talks to this origin: requests are forwarded to the API
   // server-side, so CORS never applies (the Idempotency-Key header included).
   async rewrites() {
