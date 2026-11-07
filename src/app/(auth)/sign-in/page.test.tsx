@@ -23,7 +23,7 @@ beforeEach(() => {
   state.signIn.mockReset();
   state.replace.mockReset();
   state.query = "";
-  vi.stubEnv("PUBLIC_DEMO_MODE", "false");
+  vi.stubEnv("DEMO_MODE", "false");
 });
 
 afterEach(() => {
@@ -34,7 +34,7 @@ describe("sign in", () => {
   it.each(["false", "", "TRUE"])(
     "hides demo accounts unless demo mode is explicitly true (%s)",
     (mode) => {
-      vi.stubEnv("PUBLIC_DEMO_MODE", mode);
+      vi.stubEnv("DEMO_MODE", mode);
       render(<SignInPage />);
 
       expect(
@@ -48,7 +48,7 @@ describe("sign in", () => {
   );
 
   it("fills a demo account only in demo mode and preserves password manager attributes", async () => {
-    vi.stubEnv("PUBLIC_DEMO_MODE", "true");
+    vi.stubEnv("DEMO_MODE", "true");
     const user = userEvent.setup();
     render(<SignInPage />);
 

@@ -19,7 +19,7 @@ export function SettlementInstructions({
   orderRef: string;
   className?: string;
 }) {
-  const isDemo = process.env.PUBLIC_DEMO_MODE === "true";
+  const isDemo = process.env.DEMO_MODE === "true";
   return (
     <Panel className={className}>
       <PanelHeader
