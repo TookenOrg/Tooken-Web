@@ -34,6 +34,18 @@ export function formatMoney(
   }
 }
 
+export function formatRecordedMoney(
+  value: Decimalish,
+  currency: string | null | undefined,
+  options: { decimals?: number; compact?: boolean } = {},
+): string {
+  if (toFormattable(value) === null) return "—";
+  const code = currency?.trim();
+  return code && /^[A-Z]{3}$/.test(code)
+    ? formatMoney(value, code, options)
+    : "Currency unavailable";
+}
+
 export function formatNumber(value: Decimalish, maxDecimals = 0): string {
   const v = toFormattable(value);
   if (v === null) return "—";

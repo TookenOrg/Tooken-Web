@@ -1,5 +1,6 @@
 "use client";
 
+import { useQueries } from "@tanstack/react-query";
 import {
   LayoutGrid,
   List,
@@ -27,28 +28,55 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
-import { useRealEstates } from "@/lib/api/hooks";
+import { realEstateApi } from "@/lib/api/endpoints";
+import { queryKeys, useRealEstates } from "@/lib/api/hooks";
 import type { RealEstateSummary } from "@/lib/api/types";
-import { formatNumber } from "@/lib/format";
+import { compareDecimal, formatNumber } from "@/lib/format";
 import { countryName, ESTATE_TYPES } from "@/lib/reference";
 import { REAL_ESTATE_STATUS, realEstateStatusMeta } from "@/lib/status";
 import { cn } from "@/lib/utils";
 
-type SortKey = "yield-desc" | "price-asc" | "price-desc" | "newest";
+type SortKey =
+  | "open-first"
+  | "yield-desc"
+  | "price-asc"
+  | "price-desc"
+  | "newest";
 
 const SORTS: { value: SortKey; label: string }[] = [
+  { value: "open-first", label: "Open first, newest published" },
   { value: "yield-desc", label: "Highest yield" },
-  { value: "price-asc", label: "Price per share: low to high" },
-  { value: "price-desc", label: "Price per share: high to low" },
-  { value: "newest", label: "Newest first" },
+  { value: "price-asc", label: "Price: low to high by currency" },
+  { value: "price-desc", label: "Price: high to low by currency" },
+  { value: "newest", label: "Newest published" },
 ];
 
 const YIELD_MAX = 15;
 const ALL = "all";
 
-function num(v: string | number | undefined | null): number {
-  const n = Number(v);
-  return Number.isFinite(n) ? n : 0;
+function knownNumber(value: number | undefined | null): number | null {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+function publicationTime(value: string | undefined): number | null {
+  if (!value) return null;
+  const timestamp = Date.parse(value);
+  return Number.isFinite(timestamp) ? timestamp : null;
+}
+
+function compareOptionalNumbers(
+  a: number | null,
+  b: number | null,
+  descending = false,
+) {
+  if (a === null) return b === null ? 0 : 1;
+  if (b === null) return -1;
+  return descending ? b - a : a - b;
+}
+
+function knownPrice(value: string | undefined): string | null {
+  const price = value?.trim();
+  return price && /^\d+(?:\.\d+)?$/.test(price) ? price : null;
 }
 
 function matchesQuery(e: RealEstateSummary, q: string): boolean {
@@ -65,32 +93,49 @@ function matchesQuery(e: RealEstateSummary, q: string): boolean {
   return haystack.includes(q.toLocaleLowerCase("en-GB"));
 }
 
-function sortEstates(list: RealEstateSummary[], sort: SortKey) {
-  const copy = [...list];
-  switch (sort) {
-    case "yield-desc":
-      return copy.sort(
-        (a, b) => num(b.configuration?.yield) - num(a.configuration?.yield),
+function sortEstates(
+  list: RealEstateSummary[],
+  sort: SortKey,
+  publicationDates: Map<number, string | undefined>,
+) {
+  return [...list].sort((a, b) => {
+    let order = 0;
+    if (sort === "open-first" || sort === "newest") {
+      if (sort === "open-first") {
+        order =
+          Number(b.status === "fundraising") -
+          Number(a.status === "fundraising");
+      }
+      order ||= compareOptionalNumbers(
+        publicationTime(publicationDates.get(a.id)),
+        publicationTime(publicationDates.get(b.id)),
+        true,
       );
-    case "price-asc":
-      return copy.sort(
-        (a, b) =>
-          num(a.configuration?.price_per_share) -
-          num(b.configuration?.price_per_share),
+    } else if (sort === "yield-desc") {
+      order = compareOptionalNumbers(
+        knownNumber(a.configuration?.yield),
+        knownNumber(b.configuration?.yield),
+        true,
       );
-    case "price-desc":
-      return copy.sort(
-        (a, b) =>
-          num(b.configuration?.price_per_share) -
-          num(a.configuration?.price_per_share),
-      );
-    case "newest":
-      return copy.sort(
-        (a, b) =>
-          new Date(b.created_at ?? 0).getTime() -
-          new Date(a.created_at ?? 0).getTime(),
-      );
-  }
+    } else {
+      const aPrice = knownPrice(a.configuration?.price_per_share);
+      const bPrice = knownPrice(b.configuration?.price_per_share);
+      if (aPrice === null || bPrice === null) {
+        order = aPrice === bPrice ? 0 : aPrice === null ? 1 : -1;
+      } else {
+        const aCurrency = a.configuration?.currency_code?.trim().toUpperCase();
+        const bCurrency = b.configuration?.currency_code?.trim().toUpperCase();
+        if (!aCurrency || !bCurrency) {
+          order = aCurrency === bCurrency ? 0 : aCurrency ? -1 : 1;
+        } else {
+          order = aCurrency < bCurrency ? -1 : aCurrency > bCurrency ? 1 : 0;
+        }
+        order ||=
+          compareDecimal(aPrice, bPrice) * (sort === "price-desc" ? -1 : 1);
+      }
+    }
+    return order || a.id - b.id;
+  });
 }
 
 function CardSkeleton() {
@@ -120,7 +165,7 @@ export default function ExplorePage() {
     0,
     YIELD_MAX,
   ]);
-  const [sort, setSort] = useState<SortKey>("yield-desc");
+  const [sort, setSort] = useState<SortKey>("open-first");
   const [layout, setLayout] = useState<"grid" | "list">("grid");
 
   const estates = data ?? [];
@@ -132,23 +177,94 @@ export default function ExplorePage() {
 
   const yieldActive = yieldRange[0] > 0 || yieldRange[1] < YIELD_MAX;
   const filtersActive =
-    !!query || type !== ALL || status !== ALL || yieldActive;
+    !!query.trim() || type !== ALL || status !== ALL || yieldActive;
 
-  const results = useMemo(() => {
-    const filtered = estates.filter((e) => {
-      if (!matchesQuery(e, query.trim())) return false;
-      if (type !== ALL && String(e.estate_type_id) !== type) return false;
-      if (status !== ALL && e.status !== status) return false;
-      if (yieldActive) {
-        const y = e.configuration?.yield;
-        if (typeof y !== "number") return false;
-        if (y < yieldRange[0]) return false;
-        if (yieldRange[1] < YIELD_MAX && y > yieldRange[1]) return false;
-      }
-      return true;
-    });
-    return sortEstates(filtered, sort);
-  }, [estates, query, type, status, yieldActive, yieldRange, sort]);
+  const filtered = useMemo(
+    () =>
+      estates.filter((e) => {
+        if (!matchesQuery(e, query.trim())) return false;
+        if (type !== ALL && String(e.estate_type_id) !== type) return false;
+        if (status !== ALL && e.status !== status) return false;
+        if (yieldActive) {
+          const y = knownNumber(e.configuration?.yield);
+          if (y === null) return false;
+          if (y < yieldRange[0]) return false;
+          if (yieldRange[1] < YIELD_MAX && y > yieldRange[1]) return false;
+        }
+        return true;
+      }),
+    [estates, query, type, status, yieldActive, yieldRange],
+  );
+
+  const needsPublicationDates = sort === "open-first" || sort === "newest";
+  const publicationQueries = useQueries({
+    queries: filtered.map((estate) => ({
+      queryKey: [...queryKeys.realEstate(estate.id), "publication-date"],
+      queryFn: async () =>
+        (await realEstateApi.get(estate.id)).published_at ?? null,
+      enabled:
+        needsPublicationDates &&
+        !isError &&
+        Number.isInteger(estate.id) &&
+        estate.id > 0,
+      retry: false,
+      staleTime: 30_000,
+    })),
+  });
+  const publicationDates = new Map<number, string | undefined>(
+    filtered.map((estate, index) => [
+      estate.id,
+      publicationQueries[index]?.data ?? undefined,
+    ]),
+  );
+  const orderingDates =
+    needsPublicationDates &&
+    publicationQueries.some((result) => result.isLoading);
+  const failedDates = needsPublicationDates
+    ? publicationQueries.filter(
+        (result) => result.isError && result.data === undefined,
+      )
+    : [];
+  const results = sortEstates(filtered, sort, publicationDates);
+
+  const activeFilters = [
+    ...(query.trim()
+      ? [
+          {
+            key: "search",
+            label: `Search: ${query.trim()}`,
+            clear: () => setQuery(""),
+          },
+        ]
+      : []),
+    ...(type !== ALL
+      ? [
+          {
+            key: "type",
+            label: `Asset type: ${ESTATE_TYPES.find((item) => String(item.id) === type)?.label ?? type}`,
+            clear: () => setType(ALL),
+          },
+        ]
+      : []),
+    ...(status !== ALL
+      ? [
+          {
+            key: "status",
+            label: `Status: ${realEstateStatusMeta(status).label}`,
+            clear: () => setStatus(ALL),
+          },
+        ]
+      : []),
+    ...(yieldActive
+      ? [
+          {
+            key: "yield",
+            label: `Yield: ${yieldRange[0]}–${yieldRange[1] === YIELD_MAX ? `${YIELD_MAX}+` : yieldRange[1]} %`,
+            clear: () => setYieldRange([0, YIELD_MAX]),
+          },
+        ]
+      : []),
+  ];
 
   const reset = () => {
     setQuery("");
@@ -160,16 +276,16 @@ export default function ExplorePage() {
   return (
     <>
       <section className="border-b border-border">
-        <div className="mx-auto max-w-7xl px-5 py-12 sm:px-8 lg:py-16">
+        <div className="mx-auto max-w-7xl px-5 py-8 sm:px-8 sm:py-12 lg:py-16">
           <p className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
             The asset collection
           </p>
-          <h1 className="mt-4 font-editorial text-5xl font-normal tracking-tight text-ink sm:text-6xl">
-            Find your perspective.
+          <h1 className="mt-3 font-editorial text-[2.4rem] leading-tight font-normal tracking-tight text-ink sm:mt-4 sm:text-6xl">
+            Explore the offerings.
           </h1>
-          <p className="mt-5 max-w-xl text-sm leading-relaxed text-muted-foreground sm:text-base">
-            Explore the offerings, compare the terms and read the documents.
-            Subscriptions are available to verified investors. Capital at risk.
+          <p className="mt-3 max-w-xl text-sm leading-relaxed text-muted-foreground sm:mt-5 sm:text-base">
+            Compare the available offering information. Subscriptions are
+            available to verified investors. Capital at risk.
           </p>
         </div>
       </section>
@@ -187,13 +303,16 @@ export default function ExplorePage() {
               onChange={(e) => setQuery(e.target.value)}
               placeholder="Search by name or city"
               aria-label="Search offerings"
-              className="pl-9"
+              className="h-11 border-ink/20 bg-white pl-9 sm:h-10"
             />
           </div>
 
           <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:items-center">
             <Select value={type} onValueChange={setType}>
-              <SelectTrigger className="w-full sm:w-48" aria-label="Asset type">
+              <SelectTrigger
+                className="h-11 w-full border-ink/20 bg-white sm:h-9 sm:w-48"
+                aria-label="Asset type"
+              >
                 <SelectValue placeholder="Asset type" />
               </SelectTrigger>
               <SelectContent>
@@ -207,7 +326,10 @@ export default function ExplorePage() {
             </Select>
 
             <Select value={status} onValueChange={setStatus}>
-              <SelectTrigger className="w-full sm:w-48" aria-label="Status">
+              <SelectTrigger
+                className="h-11 w-full border-ink/20 bg-white sm:h-9 sm:w-48"
+                aria-label="Status"
+              >
                 <SelectValue placeholder="Status" />
               </SelectTrigger>
               <SelectContent>
@@ -232,7 +354,7 @@ export default function ExplorePage() {
                 <Button
                   variant="outline"
                   className={cn(
-                    "justify-start font-normal",
+                    "h-11 justify-start border-ink/20 bg-white font-normal sm:h-9",
                     yieldActive && "border-ink/40",
                   )}
                 >
@@ -276,9 +398,66 @@ export default function ExplorePage() {
                 ) : null}
               </PopoverContent>
             </Popover>
+          </div>
+        </div>
 
+        {activeFilters.length ? (
+          <div className="mt-4 flex flex-wrap items-center gap-2">
+            <span className="text-xs text-muted-foreground">
+              Active filters:
+            </span>
+            {activeFilters.map((filter) => (
+              <button
+                key={filter.key}
+                type="button"
+                onClick={filter.clear}
+                aria-label={`Remove ${filter.label} filter`}
+                className="inline-flex h-8 max-w-full items-center gap-1.5 rounded-full border border-ink/20 bg-white px-3 text-xs text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              >
+                <span className="truncate">{filter.label}</span>
+                <X className="size-3.5 shrink-0" aria-hidden />
+              </button>
+            ))}
+            <Button
+              variant="link"
+              size="sm"
+              onClick={reset}
+              className="h-8 px-1 text-ink"
+            >
+              Clear filters
+            </Button>
+          </div>
+        ) : null}
+
+        <div className="mt-5 flex flex-wrap items-center justify-between gap-3">
+          <p className="text-sm text-muted-foreground" aria-live="polite">
+            {isLoading ? (
+              "Loading offerings…"
+            ) : isError ? (
+              "Offerings unavailable"
+            ) : (
+              <>
+                <span className="font-semibold text-ink tabular">
+                  {results.length}
+                </span>{" "}
+                {results.length === 1 ? "offering" : "offerings"}
+                {filtersActive ? ` of ${estates.length}` : ""}
+              </>
+            )}
+          </p>
+          <div className="flex w-full flex-wrap items-center gap-3 sm:w-auto">
+            <label
+              htmlFor="explore-sort"
+              className="text-sm text-muted-foreground"
+            >
+              Sort by
+            </label>
             <Select value={sort} onValueChange={(v) => setSort(v as SortKey)}>
-              <SelectTrigger className="w-full sm:w-56" aria-label="Sort by">
+              <SelectTrigger
+                id="explore-sort"
+                className="h-11 min-w-0 flex-1 border-ink/20 bg-white sm:h-9 sm:w-64 sm:flex-none"
+                aria-label="Sort by"
+              >
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -289,66 +468,60 @@ export default function ExplorePage() {
                 ))}
               </SelectContent>
             </Select>
+            <fieldset
+              className="hidden items-center rounded-md border border-border bg-card p-0.5 sm:flex"
+              aria-label="Layout"
+            >
+              <button
+                type="button"
+                onClick={() => setLayout("grid")}
+                aria-pressed={layout === "grid"}
+                aria-label="Grid view"
+                className={cn(
+                  "rounded p-1.5 text-muted-foreground transition hover:text-ink",
+                  layout === "grid" && "bg-muted text-ink",
+                )}
+              >
+                <LayoutGrid className="size-4" />
+              </button>
+              <button
+                type="button"
+                onClick={() => setLayout("list")}
+                aria-pressed={layout === "list"}
+                aria-label="List view"
+                className={cn(
+                  "rounded p-1.5 text-muted-foreground transition hover:text-ink",
+                  layout === "list" && "bg-muted text-ink",
+                )}
+              >
+                <List className="size-4" />
+              </button>
+            </fieldset>
           </div>
         </div>
 
-        <div className="mt-5 flex items-center justify-between gap-3">
-          <p className="text-sm text-muted-foreground" aria-live="polite">
-            {isLoading ? (
-              "Loading offerings…"
-            ) : (
-              <>
-                <span className="font-semibold text-ink tabular">
-                  {results.length}
-                </span>{" "}
-                {results.length === 1 ? "offering" : "offerings"}
-                {filtersActive ? ` of ${estates.length}` : ""}
-              </>
-            )}
-            {filtersActive ? (
-              <Button
-                variant="link"
-                size="sm"
-                onClick={reset}
-                className="ml-2 h-auto p-0 text-ink"
-              >
-                <X className="size-3.5" /> Clear filters
-              </Button>
-            ) : null}
-          </p>
-          <fieldset
-            className="hidden items-center rounded-md border border-border bg-card p-0.5 sm:flex"
-            aria-label="Layout"
-          >
+        {orderingDates && !isError ? (
+          <output className="mt-3 block text-xs text-muted-foreground">
+            Ordering offerings by publication date…
+          </output>
+        ) : failedDates.length && !isError ? (
+          <output className="mt-3 block text-xs text-muted-foreground">
+            Some publication dates could not be loaded. Affected offerings
+            appear after dated offerings within their group.{" "}
             <button
               type="button"
-              onClick={() => setLayout("grid")}
-              aria-pressed={layout === "grid"}
-              aria-label="Grid view"
-              className={cn(
-                "rounded p-1.5 text-muted-foreground transition hover:text-ink",
-                layout === "grid" && "bg-muted text-ink",
-              )}
+              className="font-medium text-ink underline underline-offset-2"
+              onClick={() => {
+                for (const result of failedDates) void result.refetch();
+              }}
             >
-              <LayoutGrid className="size-4" />
+              Retry dates
             </button>
-            <button
-              type="button"
-              onClick={() => setLayout("list")}
-              aria-pressed={layout === "list"}
-              aria-label="List view"
-              className={cn(
-                "rounded p-1.5 text-muted-foreground transition hover:text-ink",
-                layout === "list" && "bg-muted text-ink",
-              )}
-            >
-              <List className="size-4" />
-            </button>
-          </fieldset>
-        </div>
+          </output>
+        ) : null}
 
         <div className="mt-4">
-          {isLoading ? (
+          {isLoading || (orderingDates && !isError) ? (
             <div className="grid gap-5 sm:grid-cols-2 xl:grid-cols-3">
               {["a", "b", "c"].map((k) => (
                 <CardSkeleton key={k} />

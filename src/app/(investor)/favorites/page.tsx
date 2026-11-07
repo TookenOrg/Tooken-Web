@@ -12,7 +12,7 @@ import { useSession } from "@/lib/auth/session-context";
 import { useFavorites } from "@/lib/favorites";
 
 export default function FavoritesPage() {
-  const { user } = useSession();
+  const { user, userLoading, refreshUser } = useSession();
   const favorites = useFavorites(user?.id);
   const watched = favorites.data ?? [];
 
@@ -41,12 +41,20 @@ export default function FavoritesPage() {
             onRetry={() => favorites.refetch()}
           />
         </Panel>
-      ) : favorites.isLoading || !user ? (
+      ) : userLoading || (user && favorites.isLoading) ? (
         <div className="grid gap-5 sm:grid-cols-2 xl:grid-cols-3">
           {["a", "b", "c"].map((k) => (
             <Skeleton key={k} className="h-80 rounded-lg" />
           ))}
         </div>
+      ) : !user ? (
+        <Panel>
+          <ErrorState
+            title="Watchlist unavailable"
+            error={new Error("Account details could not be loaded.")}
+            onRetry={() => refreshUser()}
+          />
+        </Panel>
       ) : watched.length === 0 ? (
         <Panel>
           <EmptyState

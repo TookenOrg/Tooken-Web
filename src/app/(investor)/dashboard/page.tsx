@@ -27,12 +27,20 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { useOrders, useRealEstates } from "@/lib/api/hooks";
+import { useMyKycOnChain, useOrders, useRealEstates } from "@/lib/api/hooks";
 import { useSession } from "@/lib/auth/session-context";
-import { formatDate, formatMoney, formatNumber } from "@/lib/format";
+import {
+  formatDate,
+  formatDateTime,
+  formatMoney,
+  formatNumber,
+  formatRecordedMoney,
+} from "@/lib/format";
+import { hasPaymentCurrency, reservationDeadlineState } from "@/lib/order-book";
 import { firstName, summarizePortfolio } from "@/lib/portfolio";
+import { canInvest } from "@/lib/status";
 import { formatAmounts } from "../_components/amounts";
-import { KycBanner } from "../_components/kyc-banner";
+import { useNow } from "../_components/use-now";
 
 function greeting(): string {
   const h = new Date().getHours();
@@ -42,9 +50,14 @@ function greeting(): string {
 }
 
 export default function DashboardPage() {
-  const { user, isInvestor } = useSession();
+  const { user, userLoading, isInvestor, refreshUser } = useSession();
   const orders = useOrders();
   const estates = useRealEstates();
+  const registry = useMyKycOnChain();
+  const now = useNow(
+    1000,
+    (orders.data ?? []).some((o) => o.statusCode === "AWAITING_PAYMENT"),
+  );
 
   const titles = useMemo(
     () =>
@@ -64,12 +77,26 @@ export default function DashboardPage() {
         .slice(0, 5),
     [orders.data],
   );
-  const openOfferings = (estates.data ?? []).filter(
-    (e) => e.status === "fundraising",
-  ).length;
+  const actions = (orders.data ?? [])
+    .filter(
+      (o) =>
+        o.statusCode === "AWAITING_PAYMENT" ||
+        o.statusCode === "DELIVERY_FAILED" ||
+        o.statusCode === "REVERSAL_FAILED",
+    )
+    .sort((a, b) => {
+      const aDeadline = Date.parse(a.reservationExpiresAt);
+      const bDeadline = Date.parse(b.reservationExpiresAt);
+      return (
+        (Number.isFinite(aDeadline) ? aDeadline : Number.POSITIVE_INFINITY) -
+        (Number.isFinite(bDeadline) ? bDeadline : Number.POSITIVE_INFINITY)
+      );
+    });
 
   const invested = formatAmounts(summary.invested);
   const pending = formatAmounts(summary.pendingAmount);
+  const offeringCount = new Set(summary.holdings.map((h) => h.realEstateId))
+    .size;
   const loading = orders.isLoading;
   const name = firstName(user?.full_name);
 
@@ -91,28 +118,145 @@ export default function DashboardPage() {
         }
       />
 
-      {user && isInvestor ? <KycBanner user={user} /> : null}
+      <Panel>
+        <PanelHeader
+          title="Next steps"
+          description="Actions and updates requiring your attention."
+        />
+        <div className="space-y-3 px-5 pb-5">
+          {isInvestor && userLoading ? (
+            <p className="text-sm text-muted-foreground">
+              Checking verification…
+            </p>
+          ) : isInvestor && !user ? (
+            <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
+              <span>Account verification status is unavailable.</span>
+              <Button variant="outline" size="sm" onClick={() => refreshUser()}>
+                Retry
+              </Button>
+            </div>
+          ) : isInvestor && user ? (
+            <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
+              <span>
+                {!user.kyc_status
+                  ? "Verification status is unavailable."
+                  : !canInvest(user.kyc_status, user.kyc_expires_at)
+                    ? user.kyc_status === "pending" ||
+                      user.kyc_status === "approved"
+                      ? "Verification is in progress."
+                      : "Complete or renew your identity verification."
+                    : registry.isLoading
+                      ? "Checking verification status…"
+                      : registry.isError || !registry.data
+                        ? "Verification status is unavailable."
+                        : registry.data.is_verified
+                          ? `Identity verified${user.kyc_expires_at ? ` · valid until ${formatDate(user.kyc_expires_at)}` : ""}.`
+                          : "Your registry status requires attention."}
+              </span>
+              <Button asChild variant="outline" size="sm">
+                <Link href="/verification">View verification</Link>
+              </Button>
+            </div>
+          ) : null}
 
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          {orders.isError ? (
+            <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
+              <span>Order actions are unavailable.</span>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => orders.refetch()}
+              >
+                Retry
+              </Button>
+            </div>
+          ) : orders.isLoading ? (
+            <p className="text-sm text-muted-foreground">Checking orders…</p>
+          ) : actions.length ? (
+            <ul className="divide-y divide-border border-t border-border">
+              {actions.map((order) => {
+                const deadline = reservationDeadlineState(
+                  order.reservationExpiresAt,
+                  now,
+                );
+                const awaiting = order.statusCode === "AWAITING_PAYMENT";
+                return (
+                  <li key={order.orderRef}>
+                    <Link
+                      href={`/orders/${encodeURIComponent(order.orderRef)}`}
+                      className="flex flex-wrap items-center justify-between gap-2 py-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    >
+                      <span>
+                        <span className="block font-medium text-ink">
+                          {awaiting && deadline === "active"
+                            ? hasPaymentCurrency(order)
+                              ? `Payment required · ${formatRecordedMoney(order.amountDue, order.currencyCode)}`
+                              : "Payment currency unavailable"
+                            : awaiting && deadline === "lapsed"
+                              ? "Reservation ended"
+                              : awaiting
+                                ? "Reservation deadline unavailable"
+                                : "Order requires attention"}
+                        </span>
+                        <span className="block break-words text-xs text-muted-foreground">
+                          {order.realEstateTitle ??
+                            titles[order.realEstateId] ??
+                            order.orderRef}
+                          {awaiting && deadline === "active"
+                            ? ` · due ${formatDateTime(order.reservationExpiresAt)}`
+                            : awaiting && deadline === "lapsed"
+                              ? " · awaiting the order status update"
+                              : ""}
+                        </span>
+                      </span>
+                      <span className="text-xs font-medium text-ink">
+                        View order →
+                      </span>
+                    </Link>
+                  </li>
+                );
+              })}
+            </ul>
+          ) : (
+            <p className="text-sm text-muted-foreground">
+              No order action is currently required.
+            </p>
+          )}
+        </div>
+      </Panel>
+
+      <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
         <StatCard
           label="Invested capital"
           icon={Wallet}
           accent="brand"
           loading={loading}
-          value={invested.primary}
+          value={
+            orders.isError
+              ? "Unavailable"
+              : Object.keys(summary.invested).length
+                ? invested.primary
+                : "No holdings"
+          }
           hint={
-            invested.others.length
-              ? `+ ${invested.others.join(" · ")}`
-              : "Settled orders, gross of fees"
+            orders.isError
+              ? "Orders could not be loaded"
+              : invested.others.length
+                ? `+ ${invested.others.join(" · ")}`
+                : "Settled orders, gross of fees"
           }
         />
         <StatCard
           label="Holdings"
           icon={Building2}
           loading={loading}
-          value={formatNumber(summary.holdings.length)}
+          value={orders.isError ? "Unavailable" : formatNumber(offeringCount)}
           hint={
-            summary.holdings.length === 1 ? "Offering held" : "Offerings held"
+            orders.isError
+              ? "Orders could not be loaded"
+              : offeringCount === 1
+                ? "Offering held"
+                : "Offerings held"
           }
         />
         <StatCard
@@ -120,7 +264,9 @@ export default function DashboardPage() {
           icon={Layers}
           accent="signal"
           loading={loading}
-          value={formatNumber(summary.sharesHeld)}
+          value={
+            orders.isError ? "Unavailable" : formatNumber(summary.sharesHeld)
+          }
           hint="Security tokens delivered on-chain"
         />
         <StatCard
@@ -128,11 +274,15 @@ export default function DashboardPage() {
           icon={Clock}
           accent={summary.pendingCount ? "brand" : "ink"}
           loading={loading}
-          value={formatNumber(summary.pendingCount)}
+          value={
+            orders.isError ? "Unavailable" : formatNumber(summary.pendingCount)
+          }
           hint={
-            summary.pendingCount
-              ? `${pending.primary} awaiting settlement`
-              : "No order in progress"
+            orders.isError
+              ? "Orders could not be loaded"
+              : summary.pendingCount
+                ? `${[pending.primary, ...pending.others].join(" · ")} awaiting settlement`
+                : "No order in progress"
           }
         />
       </div>
@@ -140,7 +290,7 @@ export default function DashboardPage() {
       <Panel>
         <PanelHeader
           title="Holdings"
-          description="Positions from settled orders, per offering."
+          description="Positions from settled orders, by offering and currency."
         />
         {orders.isError ? (
           <ErrorState error={orders.error} onRetry={() => orders.refetch()} />
@@ -175,7 +325,7 @@ export default function DashboardPage() {
                 </TableHeader>
                 <TableBody>
                   {summary.holdings.map((h) => (
-                    <TableRow key={h.realEstateId}>
+                    <TableRow key={`${h.realEstateId}:${h.currency}`}>
                       <TableCell className="pl-5 font-medium text-ink">
                         <Link
                           href={`/real-estate/${h.realEstateId}`}
@@ -191,10 +341,14 @@ export default function DashboardPage() {
                         {formatNumber(h.shares)}
                       </TableCell>
                       <TableCell className="text-right tabular">
-                        {formatMoney(h.averagePrice, h.currency)}
+                        {h.averagePrice === null
+                          ? h.currency
+                          : formatMoney(h.averagePrice, h.currency)}
                       </TableCell>
                       <TableCell className="text-right font-medium tabular">
-                        {formatMoney(h.invested, h.currency)}
+                        {h.invested === null
+                          ? h.currency
+                          : formatMoney(h.invested, h.currency)}
                       </TableCell>
                       <TableCell className="text-right text-muted-foreground tabular">
                         {formatDate(h.lastOrderAt)}
@@ -218,7 +372,7 @@ export default function DashboardPage() {
             </div>
             <ul className="divide-y divide-border md:hidden">
               {summary.holdings.map((h) => (
-                <li key={h.realEstateId}>
+                <li key={`${h.realEstateId}:${h.currency}`}>
                   <Link
                     href={`/real-estate/${h.realEstateId}`}
                     className="block px-5 py-4 hover:bg-muted/40"
@@ -226,13 +380,18 @@ export default function DashboardPage() {
                     <div className="flex items-center justify-between gap-3">
                       <span className="font-medium text-ink">{h.title}</span>
                       <span className="font-semibold text-ink tabular">
-                        {formatMoney(h.invested, h.currency)}
+                        {h.invested === null
+                          ? h.currency
+                          : formatMoney(h.invested, h.currency)}
                       </span>
                     </div>
                     <div className="mt-1 flex justify-between text-xs text-muted-foreground tabular">
                       <span>{formatNumber(h.shares)} shares</span>
                       <span>
-                        avg. {formatMoney(h.averagePrice, h.currency)}
+                        avg.{" "}
+                        {h.averagePrice === null
+                          ? h.currency
+                          : formatMoney(h.averagePrice, h.currency)}
                       </span>
                     </div>
                   </Link>
@@ -243,8 +402,8 @@ export default function DashboardPage() {
         )}
       </Panel>
 
-      <div className="grid gap-6 lg:grid-cols-3">
-        <Panel className="lg:col-span-2">
+      <div>
+        <Panel>
           <PanelHeader
             title="Recent orders"
             description="Your latest subscriptions."
@@ -286,7 +445,7 @@ export default function DashboardPage() {
                     </div>
                     <div className="text-right">
                       <div className="text-sm font-semibold text-ink tabular">
-                        {formatMoney(o.amountDue, o.currencyCode)}
+                        {formatRecordedMoney(o.amountDue, o.currencyCode)}
                       </div>
                       <div className="text-xs text-muted-foreground tabular">
                         {formatNumber(o.tokenQuantity)} shares ·{" "}
@@ -301,57 +460,6 @@ export default function DashboardPage() {
               ))}
             </ul>
           )}
-        </Panel>
-
-        <Panel>
-          <PanelHeader title="Quick access" />
-          <ul className="divide-y divide-border">
-            {[
-              {
-                href: "/explore",
-                icon: Store,
-                label: "Marketplace",
-                hint: estates.isLoading
-                  ? "Loading offerings…"
-                  : `${openOfferings} offering${openOfferings === 1 ? "" : "s"} open for subscription`,
-              },
-              {
-                href: "/orders",
-                icon: ReceiptText,
-                label: "My orders",
-                hint: "Follow payment and token delivery",
-              },
-              {
-                href: "/favorites",
-                icon: Building2,
-                label: "Watchlist",
-                hint: "Offerings you follow",
-              },
-            ].map((item) => (
-              <li key={item.href}>
-                <Link
-                  href={item.href}
-                  className="flex items-center gap-3 px-5 py-3.5 transition hover:bg-muted/40"
-                >
-                  <span className="flex size-8 items-center justify-center rounded-md bg-ink/5 text-ink">
-                    <item.icon className="size-4" aria-hidden />
-                  </span>
-                  <span className="min-w-0 flex-1">
-                    <span className="block text-sm font-medium text-ink">
-                      {item.label}
-                    </span>
-                    <span className="block text-xs text-muted-foreground">
-                      {item.hint}
-                    </span>
-                  </span>
-                  <ArrowRight
-                    className="size-4 text-muted-foreground"
-                    aria-hidden
-                  />
-                </Link>
-              </li>
-            ))}
-          </ul>
         </Panel>
       </div>
     </div>

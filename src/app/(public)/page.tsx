@@ -14,6 +14,8 @@ import { RealEstateStatusBadge } from "@/components/app/status-badges";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useRealEstates } from "@/lib/api/hooks";
+import { homeFor } from "@/lib/auth/routes";
+import { useSession } from "@/lib/auth/session-context";
 import { addDecimal, formatMoney, formatNumber } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
@@ -21,7 +23,7 @@ const LISTED = ["published", "fundraising", "funded", "closed"];
 const STEPS = [
   {
     title: "Understand the asset.",
-    text: "Read the offering documents, explore the underlying asset and understand the rights attached to each token before you decide.",
+    text: "Explore the underlying asset and the available offering information. Tokens represent shares; the rights attached to those shares depend on the issuing vehicle and its legal documents.",
   },
   {
     title: "Make it yours.",
@@ -29,11 +31,12 @@ const STEPS = [
   },
   {
     title: "Keep a clear view.",
-    text: "Follow your orders, payment instructions and delivered shares from your investor workspace.",
+    text: "Follow your orders, payment instructions and delivered shares in your investor workspace. Distributions depend on the offering and are not guaranteed.",
   },
 ];
 
 export default function LandingPage() {
+  const session = useSession();
   const [slide, setSlide] = useState(0);
   const [hovered, setHovered] = useState(false);
   const [focused, setFocused] = useState(false);
@@ -69,28 +72,31 @@ export default function LandingPage() {
   const metrics = useMemo(() => {
     const listed = estates.filter((e) => LISTED.includes(e.status ?? ""));
     const byCurrency = new Map<string, string>();
+    let missingValuation = false;
     for (const estate of listed) {
       const value = estate.configuration?.total_valuation;
-      if (!value) continue;
-      const currency = estate.configuration?.currency_code || "EUR";
+      const currency = estate.configuration?.currency_code;
+      if (!value || !currency) {
+        missingValuation = true;
+        continue;
+      }
       try {
         byCurrency.set(
           currency,
           addDecimal(byCurrency.get(currency) ?? "0", value),
         );
       } catch {
-        // A malformed valuation must not break the public page.
+        missingValuation = true;
       }
     }
-    const [currency, valuation] = [...byCurrency.entries()].sort(
-      (a, b) => Number(b[1]) - Number(a[1]),
-    )[0] ?? ["EUR", null];
     return {
       count: listed.length,
       open: listed.filter((e) => e.status === "fundraising").length,
-      currency,
-      valuation,
+      valuations: [...byCurrency.entries()].sort(([a], [b]) =>
+        a.localeCompare(b),
+      ),
       mixed: byCurrency.size > 1,
+      missingValuation,
     };
   }, [estates]);
   const slides = offerings.filter((estate) => estateCover(estate));
@@ -120,9 +126,9 @@ export default function LandingPage() {
                 <em className="font-normal">Tokenized.</em>
               </h1>
               <p className="mt-7 max-w-md text-base leading-relaxed text-muted-foreground sm:text-lg">
-                Bring real-world assets on-chain. Tooken connects asset
-                tokenization, verified investors and ownership management
-                through the ERC-3643 standard.
+                Explore offerings based on real estate assets. Verify your
+                identity before subscribing, then follow your orders and
+                delivered shares in your investor workspace.
               </p>
               <div className="mt-8 flex flex-wrap items-center gap-x-7 gap-y-4">
                 <Button asChild size="lg" className="h-12 px-6">
@@ -138,8 +144,8 @@ export default function LandingPage() {
                 </Link>
               </div>
               <p className="mt-8 max-w-sm text-xs leading-relaxed text-muted-foreground">
-                Capital at risk. Returns are not guaranteed. Read the offering
-                documents before investing.
+                Capital at risk. Returns are not guaranteed. Offering documents
+                are not currently available here.
               </p>
             </div>
             <figure
@@ -249,13 +255,17 @@ export default function LandingPage() {
                 value: formatNumber(metrics.count),
               },
               {
-                label: metrics.mixed
-                  ? `Asset value · ${metrics.currency} book`
-                  : "Total listed asset value",
-                value: metrics.valuation
-                  ? formatMoney(metrics.valuation, metrics.currency, {
-                      compact: true,
-                    })
+                label: metrics.missingValuation
+                  ? "Known listed asset values"
+                  : metrics.mixed
+                    ? "Listed asset values by currency"
+                    : "Total listed asset value",
+                value: metrics.valuations.length
+                  ? metrics.valuations.map(([currency, value]) => (
+                      <span key={currency} className="block">
+                        {formatMoney(value, currency, { compact: true })}
+                      </span>
+                    ))
                   : "—",
               },
               {
@@ -299,7 +309,7 @@ export default function LandingPage() {
         </div>
         <div className="mt-9">
           {isLoading ? (
-            <div className="grid gap-6 md:grid-cols-3">
+            <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
               {["a", "b", "c"].map((key) => (
                 <Skeleton key={key} className="h-96" />
               ))}
@@ -345,12 +355,21 @@ export default function LandingPage() {
               Digital ownership should make the process easier to follow. Not
               harder to understand.
             </p>
-            <Link
-              href="/sign-up"
-              className="mt-7 inline-flex items-center gap-3 text-sm font-medium text-ink underline underline-offset-4"
-            >
-              Open an account <ArrowRight className="size-4" aria-hidden />
-            </Link>
+            {session.ready ? (
+              <Link
+                href={
+                  session.isAuthenticated ? homeFor(session.role) : "/sign-up"
+                }
+                className="mt-7 inline-flex items-center gap-3 text-sm font-medium text-ink underline underline-offset-4"
+              >
+                {session.isAuthenticated
+                  ? session.isStaff
+                    ? "Back office"
+                    : "Dashboard"
+                  : "Open an account"}{" "}
+                <ArrowRight className="size-4" aria-hidden />
+              </Link>
+            ) : null}
           </div>
           <ol className="divide-y divide-border">
             {STEPS.map((step, index) => (
@@ -375,64 +394,62 @@ export default function LandingPage() {
 
       <section
         id="institutions"
-        className="scroll-mt-24 border-y border-border bg-background text-ink"
+        className="scroll-mt-24 border-b border-border bg-background text-ink"
       >
-        <div className="mx-auto max-w-7xl px-5 py-16 sm:px-8 lg:py-24">
-          <p className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
-            03 — For the people behind the assets
-          </p>
-          <div className="mt-8 grid gap-10 lg:grid-cols-2 lg:gap-24">
-            <h2 className="max-w-lg font-editorial text-4xl leading-[1.1] font-normal tracking-tight sm:text-5xl">
-              Your asset expertise.
-              <br />
-              <em>Digital infrastructure.</em>
+        <div className="mx-auto grid max-w-7xl gap-8 px-5 py-12 sm:px-8 lg:grid-cols-2 lg:gap-16">
+          <div>
+            <p className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
+              03 — For the people behind the assets
+            </p>
+            <h2 className="mt-3 font-editorial text-3xl font-normal tracking-tight sm:text-4xl">
+              For issuers &amp; asset managers
             </h2>
-            <div>
-              <p className="max-w-lg text-base leading-relaxed text-muted-foreground">
-                Structure offerings, review investor files and oversee
-                settlement. Tooken brings the work of issuers and asset managers
-                into one shared workspace.
-              </p>
-              <dl className="mt-8 divide-y divide-border border-y border-border">
-                {[
-                  [
-                    "Issuance",
-                    "Asset documentation and tokenized ownership rights.",
-                  ],
-                  [
-                    "Investor access",
-                    "Identity review and on-chain eligibility checks.",
-                  ],
-                  [
-                    "Operations",
-                    "Order tracking, settlement and ownership records.",
-                  ],
-                ].map(([label, text]) => (
-                  <div
-                    key={label}
-                    className="grid gap-1 py-4 sm:grid-cols-[120px_1fr] sm:gap-4"
-                  >
-                    <dt className="text-sm font-medium">{label}</dt>
-                    <dd className="text-sm text-muted-foreground">{text}</dd>
-                  </div>
-                ))}
-              </dl>
-              <div className="mt-8">
-                <h3 className="text-lg font-medium">ERC-3643, at the core.</h3>
-                <p className="mt-3 text-sm leading-relaxed text-muted-foreground">
-                  Unlike freely transferable tokens, ERC-3643 supports
-                  permissioned ownership: investor identity and transfer rules
-                  are checked on-chain. Tooken uses T-REX and ONCHAINID to
-                  connect those controls to the issuance workflow.
-                </p>
-                <p className="mt-4 text-xs leading-relaxed text-muted-foreground">
-                  Real estate is the first offering category available today.
-                  The broader direction is RWA tokenization: each additional
-                  asset class needs its own legal structure and offering terms.
-                  Technical controls do not replace legal review.
-                </p>
+            <p className="mt-4 max-w-md text-sm leading-relaxed text-muted-foreground">
+              Manage offerings and the work around investor verification and
+              subscription orders in the back office.
+            </p>
+          </div>
+          <dl className="divide-y divide-border border-y border-border">
+            {[
+              [
+                "Offering setup",
+                "Configure assets, shares and issuer details.",
+              ],
+              [
+                "Investor verification",
+                "Review verification files and registration status.",
+              ],
+              [
+                "Orders & settlement",
+                "Track subscriptions and their settlement.",
+              ],
+            ].map(([label, text]) => (
+              <div
+                key={label}
+                className="grid gap-1 py-3 sm:grid-cols-[160px_1fr] sm:gap-4"
+              >
+                <dt className="text-sm font-medium">{label}</dt>
+                <dd className="text-sm text-muted-foreground">{text}</dd>
               </div>
-            </div>
+            ))}
+          </dl>
+        </div>
+      </section>
+
+      <section className="border-b border-border">
+        <div className="mx-auto grid max-w-7xl gap-4 px-5 py-10 sm:px-8 lg:grid-cols-2 lg:gap-16">
+          <h2 className="text-lg font-medium text-ink">About ERC-3643</h2>
+          <div className="space-y-3 text-sm leading-relaxed text-muted-foreground">
+            <p>
+              ERC-3643 supports permissioned tokens with identity and transfer
+              checks. These technical controls do not establish financial
+              returns or legal rights.
+            </p>
+            <p>
+              Real estate is the offering category available today. Broader
+              real-world asset tokenization remains a direction, with each
+              category requiring its own structure and offering terms.
+            </p>
           </div>
         </div>
       </section>

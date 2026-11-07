@@ -3,6 +3,7 @@
 import { Banknote, RefreshCw, Search } from "lucide-react";
 import Link from "next/link";
 import { useMemo, useState } from "react";
+import { useNow } from "@/app/(investor)/_components/use-now";
 import { PageHeader } from "@/components/app/page-header";
 import { Panel } from "@/components/app/panel";
 import { EmptyState, ErrorState, TableSkeleton } from "@/components/app/states";
@@ -25,14 +26,16 @@ import {
   formatDateTime,
   formatMoney,
   formatNumber,
+  formatRecordedMoney,
   formatRelative,
 } from "@/lib/format";
 import {
   bucketCounts,
   filterOrders,
-  isReservationLapsed,
+  hasPaymentCurrency,
   ORDER_BUCKETS,
   type OrderBucket,
+  reservationDeadlineState,
   sortOrders,
   totalsByCurrency,
 } from "@/lib/order-book";
@@ -52,6 +55,10 @@ export default function AdminOrdersPage() {
   const [toConfirm, setToConfirm] = useState<IssuanceOrder | null>(null);
 
   const all = useMemo(() => orders.data ?? [], [orders.data]);
+  const now = useNow(
+    1000,
+    all.some((o) => o.statusCode === "AWAITING_PAYMENT"),
+  );
   const counts = useMemo(() => bucketCounts(all), [all]);
   // Open on the work queue when there is something to reconcile.
   const bucket: OrderBucket =
@@ -69,7 +76,9 @@ export default function AdminOrdersPage() {
     o.realEstateTitle ??
     `Asset #${o.realEstateId}`;
 
-  const onConfirmClick = isAdmin ? setToConfirm : undefined;
+  const confirmationOrder = toConfirm
+    ? (all.find((order) => order.orderRef === toConfirm.orderRef) ?? null)
+    : null;
 
   return (
     <>
@@ -88,7 +97,11 @@ export default function AdminOrdersPage() {
             onClick={() => orders.refetch()}
             disabled={orders.isFetching}
           >
-            <RefreshCw className={cn(orders.isFetching && "animate-spin")} />
+            <RefreshCw
+              className={cn(
+                orders.isFetching && "animate-spin motion-reduce:animate-none",
+              )}
+            />
             Refresh
           </Button>
         }
@@ -115,7 +128,7 @@ export default function AdminOrdersPage() {
                           : "bg-background/70 text-muted-foreground",
                     )}
                   >
-                    {counts[b.key]}
+                    {orders.isError && !orders.data ? "—" : counts[b.key]}
                   </span>
                 </TabsTrigger>
               ))}
@@ -148,17 +161,31 @@ export default function AdminOrdersPage() {
             <span>
               <span className="text-muted-foreground">Orders </span>
               <span className="font-semibold text-ink tabular">
-                {formatNumber(rows.length)}
+                {orders.isError
+                  ? "—"
+                  : orders.isPending
+                    ? "Loading"
+                    : formatNumber(rows.length)}
               </span>
             </span>
             <span>
               <span className="text-muted-foreground">Amount due </span>
               <span className="font-semibold text-ink tabular">
-                {totals.length
-                  ? totals
-                      .map((t) => formatMoney(t.amount, t.currency))
-                      .join(" + ")
-                  : formatMoney(0)}
+                {orders.isError
+                  ? "Unavailable"
+                  : orders.isPending
+                    ? "Loading"
+                    : totals.length
+                      ? totals
+                          .map((t) =>
+                            t.amount === null
+                              ? t.currency
+                              : formatMoney(t.amount, t.currency),
+                          )
+                          .join(" · ")
+                      : rows.length
+                        ? "Unavailable"
+                        : "No orders"}
               </span>
             </span>
           </span>
@@ -177,11 +204,22 @@ export default function AdminOrdersPage() {
                 ? "Try another reference, investor or asset name."
                 : "Orders will appear as soon as investors subscribe."
             }
+            action={
+              query ? (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setQuery("")}
+                >
+                  Clear search
+                </Button>
+              ) : undefined
+            }
           />
         ) : (
           <>
             {/* Cards on small screens */}
-            <ul className="divide-y divide-border md:hidden">
+            <ul className="divide-y divide-border xl:hidden">
               {rows.map((o) => (
                 <li key={o.orderRef} className="space-y-2 px-4 py-3.5">
                   <div className="flex items-start justify-between gap-3">
@@ -200,39 +238,38 @@ export default function AdminOrdersPage() {
                   <div className="flex items-end justify-between gap-3">
                     <div className="text-xs text-muted-foreground tabular">
                       {formatNumber(o.tokenQuantity)} ×{" "}
-                      {formatMoney(o.unitPrice, o.currencyCode)}
+                      {formatRecordedMoney(o.unitPrice, o.currencyCode)}
                       <div>{formatDateTime(o.createdAt)}</div>
                     </div>
                     <div className="text-right">
                       <div className="text-sm font-semibold text-ink tabular">
-                        {formatMoney(o.amountDue, o.currencyCode)}
+                        {formatRecordedMoney(o.amountDue, o.currencyCode)}
                       </div>
-                      <ReservationHint order={o} />
+                      <ReservationHint order={o} now={now} />
                     </div>
                   </div>
                   {o.statusCode === "AWAITING_PAYMENT" ? (
                     <ConfirmButton
+                      order={o}
+                      isAdmin={isAdmin}
+                      now={now}
                       className="w-full"
-                      onClick={onConfirmClick && (() => onConfirmClick(o))}
+                      onConfirm={() => setToConfirm(o)}
                     />
                   ) : null}
                 </li>
               ))}
             </ul>
 
-            {/* Table from md upwards */}
-            <div className="hidden md:block">
+            {/* Table on wide screens */}
+            <div className="hidden xl:block">
               <Table>
                 <TableHeader>
                   <TableRow className="hover:bg-transparent">
-                    <TableHead className="pl-5">Reference</TableHead>
+                    <TableHead className="pl-5">Reference / offering</TableHead>
                     <TableHead>Investor</TableHead>
-                    <TableHead>Offering</TableHead>
-                    <TableHead className="text-right">Qty</TableHead>
-                    <TableHead className="text-right">Unit price</TableHead>
                     <TableHead className="text-right">Amount due</TableHead>
                     <TableHead>Status</TableHead>
-                    <TableHead>Created</TableHead>
                     <TableHead>Reservation</TableHead>
                     <TableHead className="pr-5 text-right">
                       <span className="sr-only">Actions</span>
@@ -251,6 +288,9 @@ export default function AdminOrdersPage() {
                           >
                             {o.orderRef}
                           </Link>
+                          <div className="max-w-56 break-words text-sm text-ink">
+                            {titleOf(o)}
+                          </div>
                         </TableCell>
                         <TableCell className="max-w-48">
                           <div className="truncate text-sm text-ink">
@@ -260,33 +300,22 @@ export default function AdminOrdersPage() {
                             {investor?.email ?? `ID ${o.userId}`}
                           </div>
                         </TableCell>
-                        <TableCell className="max-w-56">
-                          <div className="truncate">{titleOf(o)}</div>
-                        </TableCell>
-                        <TableCell className="text-right tabular">
-                          {formatNumber(o.tokenQuantity)}
-                        </TableCell>
-                        <TableCell className="text-right tabular text-muted-foreground">
-                          {formatMoney(o.unitPrice, o.currencyCode)}
-                        </TableCell>
                         <TableCell className="text-right font-medium text-ink tabular">
-                          {formatMoney(o.amountDue, o.currencyCode)}
+                          {formatRecordedMoney(o.amountDue, o.currencyCode)}
                         </TableCell>
                         <TableCell>
                           <OrderStatusBadge code={o.statusCode} />
                         </TableCell>
-                        <TableCell className="whitespace-nowrap text-xs text-muted-foreground tabular">
-                          {formatDateTime(o.createdAt)}
-                        </TableCell>
                         <TableCell className="whitespace-nowrap text-xs tabular">
-                          <ReservationHint order={o} withDate />
+                          <ReservationHint order={o} now={now} withDate />
                         </TableCell>
                         <TableCell className="pr-5 text-right">
                           {o.statusCode === "AWAITING_PAYMENT" ? (
                             <ConfirmButton
-                              onClick={
-                                onConfirmClick && (() => onConfirmClick(o))
-                              }
+                              order={o}
+                              isAdmin={isAdmin}
+                              now={now}
+                              onConfirm={() => setToConfirm(o)}
                             />
                           ) : null}
                         </TableCell>
@@ -301,7 +330,7 @@ export default function AdminOrdersPage() {
       </Panel>
 
       <ConfirmPaymentDialog
-        order={toConfirm}
+        order={confirmationOrder}
         investorLabel={
           toConfirm
             ? investorLabel(toConfirm.userId, investors.get(toConfirm.userId))
@@ -315,12 +344,39 @@ export default function AdminOrdersPage() {
 }
 
 function ConfirmButton({
-  onClick,
+  order,
+  isAdmin,
+  now,
+  onConfirm,
   className,
 }: {
-  onClick?: () => void;
+  order: IssuanceOrder;
+  isAdmin: boolean;
+  now: number;
+  onConfirm: () => void;
   className?: string;
 }) {
+  const deadline = reservationDeadlineState(order.reservationExpiresAt, now);
+  if (!isAdmin || deadline !== "active" || !hasPaymentCurrency(order)) {
+    return (
+      <div className={cn("space-y-1", className)}>
+        <Button asChild size="sm" variant="outline" className={className}>
+          <Link href={`/admin/orders/${encodeURIComponent(order.orderRef)}`}>
+            View order
+          </Link>
+        </Button>
+        <p className="text-xs text-muted-foreground">
+          {!isAdmin
+            ? "Only administrators can confirm payments."
+            : deadline === "lapsed"
+              ? "Reservation ended; awaiting the server status."
+              : deadline === "unknown"
+                ? "Reservation deadline unavailable."
+                : "Payment currency unavailable; refresh the order."}
+        </p>
+      </div>
+    );
+  }
   return (
     <Button
       size="sm"
@@ -328,9 +384,7 @@ function ConfirmButton({
         "bg-brand text-brand-foreground hover:bg-brand-light",
         className,
       )}
-      onClick={onClick}
-      disabled={!onClick}
-      title={onClick ? undefined : "Requires administrator rights"}
+      onClick={onConfirm}
     >
       <Banknote /> Confirm payment
     </Button>
@@ -339,24 +393,33 @@ function ConfirmButton({
 
 function ReservationHint({
   order,
+  now,
   withDate,
 }: {
   order: IssuanceOrder;
+  now: number;
   withDate?: boolean;
 }) {
   if (order.statusCode !== "AWAITING_PAYMENT" && order.statusCode !== "CREATED")
     return withDate ? <span className="text-muted-foreground">—</span> : null;
-  const lapsed = isReservationLapsed(order);
+  const deadline = reservationDeadlineState(order.reservationExpiresAt, now);
   return (
-    <div className={cn("text-xs", lapsed ? "text-red-600" : "text-amber-700")}>
+    <div
+      className={cn(
+        "text-xs",
+        deadline === "lapsed" ? "text-red-600" : "text-amber-700",
+      )}
+    >
       {withDate ? (
         <div className="text-ink/80">
           {formatDateTime(order.reservationExpiresAt)}
         </div>
       ) : null}
-      {lapsed
+      {deadline === "lapsed"
         ? "Reservation lapsed"
-        : `Expires ${formatRelative(order.reservationExpiresAt)}`}
+        : deadline === "unknown"
+          ? "Reservation deadline unavailable"
+          : `Expires ${formatRelative(order.reservationExpiresAt)}`}
     </div>
   );
 }

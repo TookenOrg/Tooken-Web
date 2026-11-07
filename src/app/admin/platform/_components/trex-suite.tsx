@@ -10,8 +10,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useTrexSuite } from "@/lib/api/hooks";
-import type { ContractDetails } from "@/lib/api/types";
 import { cn } from "@/lib/utils";
+import { ResultPanel } from "./result-panel";
 
 const SUITE_CONTRACTS = [
   ["identityRegistry", "Identity registry"],
@@ -22,25 +22,60 @@ const SUITE_CONTRACTS = [
   ["trexFactory", "T-REX factory"],
 ] as const;
 
+function record(value: unknown): Record<string, unknown> | undefined {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : undefined;
+}
+
+function hasSuiteFields(value: Record<string, unknown> | undefined): boolean {
+  return !!(
+    value &&
+    (record(value.token) || SUITE_CONTRACTS.some(([key]) => record(value[key])))
+  );
+}
+
 export function TrexSuiteLookup() {
   const [draft, setDraft] = useState("");
   const [salt, setSalt] = useState<string | undefined>(undefined);
   const suite = useTrexSuite(salt);
-  const data = suite.data;
+  const root = record(suite.data);
+  const nested = record(root?.data);
+  const data = hasSuiteFields(root) ? root : (nested ?? root);
 
   const contracts = SUITE_CONTRACTS.flatMap(([key, label]) => {
-    const c = data?.[key] as ContractDetails | undefined;
-    return c?.address ? [{ label, contract: c }] : [];
+    const contract = record(data?.[key]);
+    const address = contract?.address;
+    const explorerUrl = contract?.explorerUrl;
+    return typeof address === "string" && address.trim()
+      ? [
+          {
+            label,
+            address,
+            explorerUrl:
+              typeof explorerUrl === "string" &&
+              /^https?:\/\//i.test(explorerUrl)
+                ? explorerUrl
+                : undefined,
+          },
+        ]
+      : [];
   });
-  const token = data?.token as
-    | { address?: string; name?: string; symbol?: string }
-    | undefined;
+  const token = record(data?.token);
+  const tokenAddress =
+    typeof token?.address === "string" && token.address.trim()
+      ? token.address
+      : undefined;
+  const tokenSymbol =
+    typeof token?.symbol === "string" && token.symbol.trim()
+      ? token.symbol
+      : undefined;
 
   return (
     <Panel>
       <PanelHeader
         title="T-REX suite lookup"
-        description="Contracts of a deployed ERC-3643 suite, by deployment salt."
+        description="Read available ERC-3643 suite information by deployment salt."
         actions={
           <Button
             variant="ghost"
@@ -49,22 +84,45 @@ export function TrexSuiteLookup() {
             disabled={suite.isFetching}
             aria-label="Refresh suite information"
           >
-            <RefreshCw className={cn(suite.isFetching && "animate-spin")} />
+            <RefreshCw
+              className={cn(
+                suite.isFetching && "animate-spin motion-reduce:animate-none",
+              )}
+            />
           </Button>
         }
       />
       <PanelBody className="space-y-4">
+        <div className="space-y-1 text-sm text-muted-foreground">
+          <p>
+            <strong className="font-medium text-ink">
+              Network and environment: unknown.
+            </strong>{" "}
+            The suite lookup does not provide these fields.
+          </p>
+          <p>
+            <strong className="font-medium text-ink">
+              Initialisation status: unknown.
+            </strong>{" "}
+            This lookup does not establish platform health or whether all
+            bootstrap steps have completed.
+          </p>
+        </div>
         <form
           className="flex flex-col gap-3 sm:flex-row sm:items-end"
           onSubmit={(e) => {
             e.preventDefault();
-            setSalt(draft.trim() || undefined);
+            const requested = draft.trim() || undefined;
+            if (requested === salt) {
+              void suite.refetch();
+            } else {
+              setSalt(requested);
+            }
           }}
         >
           <FormField
             label="Deployment salt"
             htmlFor="trex-salt"
-            hint="Leave empty for the platform default suite."
             className="flex-1"
           >
             <Input
@@ -73,7 +131,11 @@ export function TrexSuiteLookup() {
               onChange={(e) => setDraft(e.target.value)}
               placeholder="e.g. tooken-platform"
               className="font-mono"
+              aria-describedby="trex-salt-hint"
             />
+            <p id="trex-salt-hint" className="text-xs text-muted-foreground">
+              Leave empty for the platform default suite.
+            </p>
           </FormField>
           <Button type="submit" variant="outline" className="sm:mb-5">
             <Search /> Look up
@@ -81,42 +143,47 @@ export function TrexSuiteLookup() {
         </form>
 
         {suite.isPending ? (
-          <Skeleton className="h-16 w-full" />
+          <div>
+            <output className="sr-only">Loading suite information…</output>
+            <Skeleton className="h-16 w-full" />
+          </div>
         ) : suite.isError ? (
-          <ErrorState
-            error={suite.error}
-            title="Suite not found"
-            className="py-6"
-          />
+          <div className="space-y-2">
+            <ErrorState
+              error={suite.error}
+              title="Suite information unavailable"
+              onRetry={() => void suite.refetch()}
+              className="py-6"
+            />
+            <p className="text-sm text-muted-foreground">
+              A failed lookup does not establish whether the suite exists.
+            </p>
+          </div>
         ) : (
           <div className="space-y-3">
             <div className="rounded-md border border-border bg-muted/40 px-3 py-2 text-sm">
-              <span className="text-muted-foreground">
-                {salt ? (
-                  <>
-                    Salt <span className="font-mono text-ink">{salt}</span> ·{" "}
-                  </>
-                ) : (
-                  "Default suite · "
-                )}
-              </span>
-              {data?.message ?? "Response received."}
+              {salt ? (
+                <>
+                  Requested salt{" "}
+                  <span className="break-all font-mono text-ink">{salt}</span>
+                </>
+              ) : (
+                "Platform default suite"
+              )}
             </div>
-            {contracts.length || token?.address ? (
+            {contracts.length || tokenAddress ? (
               <dl className="divide-y divide-dashed divide-border">
-                {token?.address ? (
-                  <Row
-                    label={`Token${token.symbol ? ` (${token.symbol})` : ""}`}
-                  >
-                    <HashValue value={token.address} />
+                {tokenAddress ? (
+                  <Row label={`Token${tokenSymbol ? ` (${tokenSymbol})` : ""}`}>
+                    <HashValue value={tokenAddress} full />
                   </Row>
                 ) : null}
-                {contracts.map(({ label, contract }) => (
+                {contracts.map(({ label, address, explorerUrl }) => (
                   <Row key={label} label={label}>
-                    <HashValue value={contract.address} />
-                    {contract.explorerUrl ? (
+                    <HashValue value={address} full />
+                    {explorerUrl ? (
                       <a
-                        href={contract.explorerUrl}
+                        href={explorerUrl}
                         target="_blank"
                         rel="noreferrer"
                         className="ml-2 text-xs underline-offset-4 hover:underline"
@@ -129,12 +196,22 @@ export function TrexSuiteLookup() {
               </dl>
             ) : (
               <p className="text-sm text-muted-foreground">
-                On-chain contract details are not exposed by this backend
-                version yet.
+                No contract addresses were returned. This does not establish
+                whether the suite or platform has been initialised.
               </p>
             )}
           </div>
         )}
+        <ResultPanel
+          endpoint="GET /trex/suite"
+          data={
+            !suite.isPending && !suite.isError
+              ? (suite.data ?? null)
+              : undefined
+          }
+          status="Suite response received; network and initialisation status remain unknown."
+          title="Suite response"
+        />
       </PanelBody>
     </Panel>
   );
@@ -148,9 +225,9 @@ function Row({
   children: React.ReactNode;
 }) {
   return (
-    <div className="flex items-center justify-between gap-4 py-2">
+    <div className="grid gap-1 py-2 sm:grid-cols-[minmax(0,12rem)_minmax(0,1fr)] sm:gap-4">
       <dt className="text-sm text-muted-foreground">{label}</dt>
-      <dd className="flex min-w-0 items-center">{children}</dd>
+      <dd className="flex min-w-0 flex-wrap items-center gap-1">{children}</dd>
     </div>
   );
 }

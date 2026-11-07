@@ -1,5 +1,6 @@
 "use client";
 
+import { useQueryClient } from "@tanstack/react-query";
 import {
   AlertTriangle,
   ExternalLink,
@@ -29,6 +30,7 @@ import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { errorMessage } from "@/lib/api/client";
 import {
+  queryKeys,
   useDeleteRealEstate,
   useIssuer,
   useOpenFundraising,
@@ -41,21 +43,26 @@ import {
   formatDate,
   formatDateTime,
   formatFrequency,
-  formatMoney,
   formatNumber,
   formatPercent,
+  formatRecordedMoney,
 } from "@/lib/format";
 import { missingFieldLabel, missingFieldsOf } from "@/lib/missing-fields";
 import { offeringTerms } from "@/lib/offering-terms";
 import { countryName, estateTypeLabel } from "@/lib/reference";
 import { AssetLifecycle } from "../_components/asset-lifecycle";
 import { AssetOrders } from "../_components/asset-orders";
+import {
+  assetFieldHref,
+  PublicationReadiness,
+} from "../_components/publication-readiness";
 import { PublishProgress } from "../_components/publish-progress";
 
 export default function AssetDetailPage() {
   const params = useParams<{ id: string }>();
   const id = Number(params.id);
   const router = useRouter();
+  const queryClient = useQueryClient();
   const asset = useRealEstate(Number.isFinite(id) ? id : undefined);
   const publish = usePublishRealEstate();
   const open = useOpenFundraising();
@@ -86,19 +93,35 @@ export default function AssetDetailPage() {
   }
 
   const re = asset.data;
-  const status = re.status ?? "draft";
+  const status = re.status;
   const isDraft = status === "draft" || status === "in_review";
 
   const runPublish = () => {
     setConfirm(null);
     open.reset();
     publish.mutate(re.id, {
-      onSuccess: (r) =>
-        toast.success("Asset published", {
-          description: r.token?.symbol
-            ? `Token ${r.token.symbol} deployed at ${r.token.address?.slice(0, 10)}…`
-            : "The ERC-3643 token has been deployed.",
-        }),
+      onSuccess: (r) => {
+        if (r.status === "published") {
+          toast.success("Asset published", {
+            description: r.token?.symbol
+              ? `Token ${r.token.symbol} deployed.`
+              : "The server confirmed publication and token deployment.",
+          });
+        } else {
+          toast.warning("Publication status needs to be checked", {
+            description: "Refresh the asset before taking another action.",
+          });
+          asset.refetch();
+        }
+      },
+      onError: () => {
+        asset.refetch();
+        if (re.issuer?.id) {
+          queryClient.invalidateQueries({
+            queryKey: queryKeys.issuer(re.issuer.id),
+          });
+        }
+      },
     });
   };
 
@@ -161,13 +184,15 @@ export default function AssetDetailPage() {
               >
                 <Trash2 /> Delete
               </Button>
-            ) : (
+            ) : ["published", "fundraising", "funded", "closed"].includes(
+                status ?? "",
+              ) ? (
               <Button variant="outline" asChild>
                 <Link href={`/real-estate/${re.id}`}>
                   <ExternalLink /> Marketplace view
                 </Link>
               </Button>
-            )}
+            ) : null}
             <Button variant="outline" asChild>
               <Link href={`/admin/assets/${re.id}/edit`}>
                 <Pencil /> Edit
@@ -214,6 +239,8 @@ export default function AssetDetailPage() {
           <PublishError
             error={publish.error}
             assetId={re.id}
+            issuerId={re.issuer?.id}
+            onRefresh={() => asset.refetch()}
             onDismiss={() => publish.reset()}
           />
         ) : null}
@@ -223,6 +250,14 @@ export default function AssetDetailPage() {
             <AlertTitle>Fundraising could not be opened</AlertTitle>
             <AlertDescription>{errorMessage(open.error)}</AlertDescription>
           </Alert>
+        ) : null}
+
+        {isDraft ? (
+          <PublicationReadiness
+            asset={re}
+            missingFields={missingFieldsOf(publish.error)}
+            publicationFailed={publish.isError}
+          />
         ) : null}
 
         <Tabs defaultValue="overview" className="space-y-4">
@@ -267,8 +302,12 @@ export default function AssetDetailPage() {
               shares.
             </p>
             <p>
-              Once tokenized, the share count can no longer change and the asset
-              cannot be deleted.
+              The asset name, share count and per-investor share cap are fixed
+              by the deployed token. The asset cannot be deleted once tokenized.
+            </p>
+            <p>
+              Publication makes the offering visible. Opening fundraising is a
+              separate decision.
             </p>
           </div>
         }
@@ -301,10 +340,14 @@ export default function AssetDetailPage() {
 function PublishError({
   error,
   assetId,
+  issuerId,
+  onRefresh,
   onDismiss,
 }: {
   error: unknown;
   assetId: number;
+  issuerId?: number;
+  onRefresh: () => void;
   onDismiss: () => void;
 }) {
   const missing = missingFieldsOf(error);
@@ -314,25 +357,34 @@ function PublishError({
       <AlertTitle>
         {missing.length
           ? "The asset is not complete enough to be published"
-          : "Publication failed"}
+          : "Publication was not confirmed"}
       </AlertTitle>
       <AlertDescription>
         {missing.length ? (
           <div className="space-y-3">
+            <p>{errorMessage(error)}</p>
             <p>Complete the following before publishing:</p>
             <ul className="grid gap-x-6 gap-y-1 sm:grid-cols-2">
               {missing.map((m) => (
                 <li key={m} className="flex items-center gap-2 text-ink">
                   <span className="size-1.5 rounded-full bg-red-500" />
-                  {missingFieldLabel(m)}
+                  <Link
+                    href={assetFieldHref(assetId, m, issuerId)}
+                    className="underline"
+                  >
+                    {missingFieldLabel(m)}
+                  </Link>
                 </li>
               ))}
             </ul>
           </div>
         ) : (
-          <p>{errorMessage(error)}</p>
+          <div className="space-y-2">
+            <p>{errorMessage(error)}</p>
+            <p>Refresh the asset status before retrying.</p>
+          </div>
         )}
-        <div className="mt-3 flex gap-2">
+        <div className="mt-3 flex flex-wrap gap-2">
           <Button size="sm" variant="outline" asChild>
             <Link href={`/admin/assets/${assetId}/edit`}>
               <Pencil /> Complete the asset
@@ -340,6 +392,9 @@ function PublishError({
           </Button>
           <Button size="sm" variant="ghost" onClick={onDismiss}>
             Dismiss
+          </Button>
+          <Button size="sm" variant="outline" onClick={onRefresh}>
+            Refresh status
           </Button>
         </div>
       </AlertDescription>
@@ -374,13 +429,13 @@ function OverviewTab({ asset: re }: { asset: RealEstate }) {
         <div className="grid grid-cols-2 divide-border sm:grid-cols-3 sm:divide-x xl:grid-cols-6 [&>*]:border-b [&>*]:border-border xl:[&>*]:border-b-0">
           <Figure
             label="Valuation"
-            value={formatMoney(c?.total_valuation, c?.currency_code, {
+            value={formatRecordedMoney(c?.total_valuation, c?.currency_code, {
               decimals: 0,
             })}
           />
           <Figure
             label="Price / share"
-            value={formatMoney(c?.price_per_share, c?.currency_code)}
+            value={formatRecordedMoney(c?.price_per_share, c?.currency_code)}
           />
           <Figure label="Total shares" value={formatNumber(c?.total_shares)} />
           <Figure label="Target yield" value={formatPercent(c?.yield)} />
@@ -402,7 +457,13 @@ function OverviewTab({ asset: re }: { asset: RealEstate }) {
         </div>
       </Panel>
 
-      <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_360px]">
+      <div
+        className={
+          media.length
+            ? "grid gap-6 lg:grid-cols-[minmax(0,1fr)_360px]"
+            : "grid gap-6 lg:grid-cols-2"
+        }
+      >
         <div className="space-y-6">
           <Panel>
             <PanelHeader title="Description" />
@@ -421,7 +482,7 @@ function OverviewTab({ asset: re }: { asset: RealEstate }) {
           <Panel>
             <PanelHeader
               title="Media"
-              description={`${media.length} image${media.length === 1 ? "" : "s"}`}
+              description={`${media.length} gallery item${media.length === 1 ? "" : "s"}`}
             />
             <PanelBody>
               {media.length ? (
@@ -450,6 +511,19 @@ function OverviewTab({ asset: re }: { asset: RealEstate }) {
                     </li>
                   ))}
                 </ul>
+              ) : re.imageurl ? (
+                <p className="text-sm text-muted-foreground">
+                  No gallery items. A{" "}
+                  <a
+                    href={re.imageurl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="underline"
+                  >
+                    cover image
+                  </a>{" "}
+                  is present.
+                </p>
               ) : (
                 <p className="text-sm text-muted-foreground">
                   No image yet. At least one is required before publication.

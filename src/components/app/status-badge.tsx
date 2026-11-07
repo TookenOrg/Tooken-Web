@@ -40,7 +40,7 @@ export function StatusBadge({
         {pulse ? (
           <span
             className={cn(
-              "absolute inline-flex size-full animate-ping rounded-full opacity-75",
+              "absolute inline-flex size-full animate-ping rounded-full opacity-75 motion-reduce:animate-none",
               DOTS[tone],
             )}
           />

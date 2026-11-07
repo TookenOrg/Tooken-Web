@@ -27,6 +27,13 @@ export function AssetLifecycle({
   /** Index of a step currently being reached (e.g. while publishing). */
   pendingStep?: number;
 }) {
+  if (!status || (!(status in ORDER) && status !== "cancelled")) {
+    return (
+      <p className="text-sm text-muted-foreground">
+        The asset&apos;s lifecycle status is unavailable.
+      </p>
+    );
+  }
   if (status === "cancelled") {
     return (
       <p className="text-sm text-red-700">
@@ -34,7 +41,7 @@ export function AssetLifecycle({
       </p>
     );
   }
-  const reached = ORDER[status ?? "draft"] ?? 0;
+  const reached = ORDER[status];
   return (
     <ol className="grid grid-cols-2 gap-4 sm:grid-cols-4">
       {STEPS.map((step, i) => {

@@ -1,7 +1,13 @@
+"use client";
+
 import Link from "next/link";
+import { homeFor } from "@/lib/auth/routes";
+import { useSession } from "@/lib/auth/session-context";
 import { Brand } from "./brand";
 
 export function PublicFooter() {
+  const { ready, isAuthenticated, isStaff, role } = useSession();
+
   return (
     <footer className="border-t border-border bg-background text-muted-foreground">
       <div className="mx-auto grid max-w-7xl gap-10 px-5 py-12 sm:px-8 md:grid-cols-4">
@@ -25,26 +31,50 @@ export function PublicFooter() {
                 How it works
               </Link>
             </li>
-            <li>
-              <Link href="/#institutions" className="hover:text-ink">
-                For institutions
-              </Link>
-            </li>
+            {!(isAuthenticated && role === "USER") ? (
+              <li>
+                <Link href="/#institutions" className="hover:text-ink">
+                  For issuers &amp; asset managers
+                </Link>
+              </li>
+            ) : null}
           </ul>
         </div>
         <div>
           <h3 className="mb-4 text-xs font-medium text-ink">Account</h3>
           <ul className="space-y-2 text-sm">
-            <li>
-              <Link href="/sign-in" className="hover:text-ink">
-                Sign in
-              </Link>
-            </li>
-            <li>
-              <Link href="/sign-up" className="hover:text-ink">
-                Open an account
-              </Link>
-            </li>
+            {ready ? (
+              isAuthenticated ? (
+                <>
+                  <li>
+                    <Link href={homeFor(role)} className="hover:text-ink">
+                      {isStaff ? "Back office" : "Dashboard"}
+                    </Link>
+                  </li>
+                  <li>
+                    <Link
+                      href={isStaff ? "/profile" : "/favorites"}
+                      className="hover:text-ink"
+                    >
+                      {isStaff ? "Profile" : "Watchlist"}
+                    </Link>
+                  </li>
+                </>
+              ) : (
+                <>
+                  <li>
+                    <Link href="/sign-in" className="hover:text-ink">
+                      Sign in
+                    </Link>
+                  </li>
+                  <li>
+                    <Link href="/sign-up" className="hover:text-ink">
+                      Open an account
+                    </Link>
+                  </li>
+                </>
+              )
+            ) : null}
           </ul>
         </div>
       </div>

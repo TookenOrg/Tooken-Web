@@ -4,6 +4,7 @@ import {
   compareDecimal,
   formatFrequency,
   formatMoney,
+  formatRecordedMoney,
   multiplyDecimal,
   parseDecimal,
   percentOf,
@@ -56,6 +57,13 @@ describe("display helpers", () => {
   it("formats money in en-GB with a dash for missing values", () => {
     expect(formatMoney("5100.00000000", "EUR")).toBe("€5,100.00");
     expect(formatMoney(null)).toBe("—");
+  });
+
+  it("does not assume a currency for recorded amounts", () => {
+    expect(formatRecordedMoney("10", "")).toBe("Currency unavailable");
+    expect(formatRecordedMoney("10", undefined)).toBe("Currency unavailable");
+    expect(formatRecordedMoney("10", "CHF")).toMatch(/CHF/);
+    expect(formatRecordedMoney(null, undefined)).toBe("—");
   });
 
   it("shortens long hashes only", () => {

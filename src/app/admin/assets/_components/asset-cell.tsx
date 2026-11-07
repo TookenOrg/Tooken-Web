@@ -26,13 +26,16 @@ export function AssetCell({
         {linked ? (
           <Link
             href={`/admin/assets/${asset.id}`}
+            title={title}
             className="block truncate font-medium text-ink hover:underline"
             onClick={(e) => e.stopPropagation()}
           >
             {title}
           </Link>
         ) : (
-          <p className="truncate font-medium text-ink">{title}</p>
+          <p title={title} className="truncate font-medium text-ink">
+            {title}
+          </p>
         )}
         <p className="truncate text-xs text-muted-foreground">
           {estateTypeLabel(asset.estate_type, asset.estate_type_id)}

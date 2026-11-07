@@ -47,7 +47,7 @@ export function OrderTimeline({
               )}
             >
               {step.state === "current" ? (
-                <span className="absolute inset-0 animate-ping rounded-full bg-amber-300/40" />
+                <span className="absolute inset-0 animate-ping rounded-full bg-amber-300/40 motion-reduce:animate-none" />
               ) : null}
               {step.state === "done" ? (
                 <Check className="size-3.5" aria-hidden />

@@ -13,7 +13,7 @@ import {
 import Image from "next/image";
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { KeyValueList } from "@/components/app/key-value";
 import { PageHeader } from "@/components/app/page-header";
 import { Panel, PanelBody, PanelHeader } from "@/components/app/panel";
@@ -33,30 +33,45 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Progress } from "@/components/ui/progress";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { ApiError, errorMessage, newIdempotencyKey } from "@/lib/api/client";
-import { useCreateOrder, useOrders, useRealEstate } from "@/lib/api/hooks";
-import type { IssuanceOrder, RealEstate } from "@/lib/api/types";
+import {
+  useCreateOrder,
+  useOrder,
+  useOrders,
+  useRealEstate,
+} from "@/lib/api/hooks";
+import type { RealEstate } from "@/lib/api/types";
 import { useSession } from "@/lib/auth/session-context";
 import {
   addDecimal,
+  compareDecimal,
   formatFrequency,
   formatMoney,
   formatNumber,
   formatPercent,
+  formatRecordedMoney,
   multiplyDecimal,
   percentOf,
   remainingShares,
 } from "@/lib/format";
 import { offeringTerms } from "@/lib/offering-terms";
 import {
+  clearLegacyOrderIntent,
+  clearOrderIntent,
+  type OrderIntent,
+  readOrderIntent,
+  saveOrderIntent,
+} from "@/lib/order-intent";
+import {
+  budgetToShares,
   committedShares,
   investmentShareBounds,
   maxSubscribable,
 } from "@/lib/portfolio";
 import { canInvest } from "@/lib/status";
 import { cn } from "@/lib/utils";
-import { ReservationCountdown } from "../../../_components/reservation-countdown";
-import { SettlementInstructions } from "../../../_components/settlement-instructions";
+import { OrderPaymentSection } from "../../../_components/order-payment-section";
 
 type Step = "amount" | "review" | "done";
 
@@ -67,46 +82,6 @@ const STEPS: { key: Step; label: string }[] = [
 ];
 
 const QUICK_PICKS = [1, 10, 25, 50, 100, 250];
-
-type Intent = { quantity: number; key: string };
-const intentKey = (estateId: number) => `tooken:order-intent:${estateId}`;
-
-function loadIntent(estateId: number): Intent | null {
-  try {
-    const raw = window.sessionStorage.getItem(intentKey(estateId));
-    const parsed = raw ? (JSON.parse(raw) as Intent) : null;
-    return parsed && typeof parsed.key === "string" ? parsed : null;
-  } catch {
-    return null;
-  }
-}
-
-function saveIntent(estateId: number, intent: Intent | null) {
-  try {
-    if (intent) {
-      window.sessionStorage.setItem(
-        intentKey(estateId),
-        JSON.stringify(intent),
-      );
-    } else {
-      window.sessionStorage.removeItem(intentKey(estateId));
-    }
-  } catch {
-    // Storage unavailable: the key still lives in component state.
-  }
-}
-
-/**
- * One Idempotency-Key per order intent: kept while the quantity is unchanged
- * so a retry replays the same order instead of creating a second one.
- */
-function intentFor(estateId: number, quantity: number): Intent {
-  const stored = loadIntent(estateId);
-  if (stored && stored.quantity === quantity) return stored;
-  const intent = { quantity, key: newIdempotencyKey() };
-  saveIntent(estateId, intent);
-  return intent;
-}
 
 function describeError(error: unknown): { title: string; body: string } {
   const status = error instanceof ApiError ? error.status : 0;
@@ -165,7 +140,7 @@ export default function BuyPage() {
     );
   }
   if (estate.isLoading || userLoading || !user) return <PageSkeleton />;
-  if (estate.isError || !estate.data) {
+  if (!estate.data) {
     const notFound =
       estate.error instanceof ApiError && estate.error.status === 404;
     return notFound ? (
@@ -186,6 +161,16 @@ export default function BuyPage() {
   }
 
   const e = estate.data;
+  if (!isInvestor) {
+    return (
+      <Blocking
+        crumbs={crumbs}
+        icon={Ban}
+        title="Investor account required"
+        description="Only investor accounts can place subscription orders."
+      />
+    );
+  }
   if (!canInvest(user.kyc_status, user.kyc_expires_at)) {
     return (
       <Blocking
@@ -235,12 +220,67 @@ export default function BuyPage() {
       />
     );
   }
+  if (orders.isLoading) return <PageSkeleton />;
+  if (!orders.data) {
+    return (
+      <div>
+        <PageHeader breadcrumbs={crumbs} title="Subscribe" />
+        <Panel>
+          <ErrorState
+            title="Your existing orders could not be checked"
+            error={orders.error}
+            onRetry={() => orders.refetch()}
+          />
+        </Panel>
+      </div>
+    );
+  }
+
+  const cfg = e.configuration;
+  let validOfferingData = false;
+  try {
+    validOfferingData =
+      !!cfg?.price_per_share &&
+      compareDecimal(cfg.price_per_share, "0") > 0 &&
+      !!cfg.total_shares &&
+      compareDecimal(cfg.total_shares, "0") > 0 &&
+      /^[A-Z]{3}$/.test(cfg.currency_code ?? "") &&
+      Number.isSafeInteger(e.progression?.tokens_sold) &&
+      (e.progression?.tokens_sold ?? -1) >= 0;
+  } catch {
+    validOfferingData = false;
+  }
+  if (!validOfferingData) {
+    return (
+      <div>
+        <PageHeader breadcrumbs={crumbs} title="Subscribe" />
+        <Panel>
+          <ErrorState
+            title="Offering details are unavailable"
+            error={
+              new Error(
+                "The price, currency or current share availability could not be verified.",
+              )
+            }
+            onRetry={() => estate.refetch()}
+          />
+        </Panel>
+      </div>
+    );
+  }
 
   return (
     <SubscriptionFlow
+      key={`${user.id}-${e.id}`}
       estate={e}
       crumbs={crumbs}
       committed={committedShares(orders.data, estateId)}
+      userId={user.id}
+      detailsAvailable={!estate.isError && !orders.isError}
+      retryDetails={() => {
+        if (estate.isError) estate.refetch();
+        if (orders.isError) orders.refetch();
+      }}
     />
   );
 }
@@ -285,18 +325,25 @@ function SubscriptionFlow({
   estate,
   crumbs,
   committed,
+  userId,
+  detailsAvailable,
+  retryDetails,
 }: {
   estate: RealEstate;
   crumbs: { label: string; href?: string }[];
   committed: number;
+  userId: number;
+  detailsAvailable: boolean;
+  retryDetails: () => void;
 }) {
   const cfg = estate.configuration ?? {};
   const currency = cfg.currency_code || "EUR";
   const price = cfg.price_per_share ?? "0";
   const maxPerInvestor = Number.parseInt(cfg.max_shares_per_investor ?? "", 10);
-  const remaining = cfg.total_shares
-    ? remainingShares(cfg.total_shares, estate.progression?.tokens_sold)
-    : null;
+  const remaining = Math.min(
+    remainingShares(cfg.total_shares, estate.progression?.tokens_sold),
+    Number.MAX_SAFE_INTEGER,
+  );
   const bounds = investmentShareBounds({
     price: cfg.price_per_share,
     minInvestment: cfg.min_investment,
@@ -312,24 +359,47 @@ function SubscriptionFlow({
   const entryFeeRate = cfg.entry_fee_rate?.trim() || null;
 
   const [step, setStep] = useState<Step>("amount");
+  const [amountMode, setAmountMode] = useState<"shares" | "budget">("shares");
   const [quantity, setQuantity] = useState(minQty);
   const [raw, setRaw] = useState(String(minQty));
+  const [rawBudget, setRawBudget] = useState("");
   const [ack, setAck] = useState({ risk: false, terms: false });
-  const [intent, setIntent] = useState<Intent | null>(null);
-  const [placed, setPlaced] = useState<IssuanceOrder | null>(null);
+  const [intent, setIntent] = useState<OrderIntent | null>(null);
+  const [legacyIntent, setLegacyIntent] = useState<OrderIntent | null>(null);
+  const [legacyDiscardConfirmed, setLegacyDiscardConfirmed] = useState(false);
+  const [storageState, setStorageState] = useState<
+    "loading" | "ready" | "unavailable" | "invalid"
+  >("loading");
+  const [storageMessage, setStorageMessage] = useState<string | null>(null);
+  const [orderRef, setOrderRef] = useState<string>();
+  const [checkedOrderRef, setCheckedOrderRef] = useState<string>();
+  const stepHeadingRef = useRef<HTMLSpanElement>(null);
+  const doneHeadingRef = useRef<HTMLHeadingElement>(null);
+  const previousStep = useRef<Step>("amount");
   const create = useCreateOrder();
+  const orderQuery = useOrder(orderRef);
 
   const title = estate.title ?? `Offering #${estate.id}`;
-  const outOfRange = quantity < minQty || quantity > max;
+  const pendingIntent = !!intent?.submitted && !intent.orderRef;
+  const budget = useMemo(
+    () => budgetToShares(rawBudget, price, max),
+    [rawBudget, price, max],
+  );
+  const outOfRange =
+    !Number.isSafeInteger(quantity) ||
+    quantity < minQty ||
+    quantity > max ||
+    (amountMode === "budget" && !budget);
   const gross = useMemo(() => {
+    if (!Number.isSafeInteger(quantity) || quantity < 1) return null;
     try {
-      return multiplyDecimal(price, Math.max(0, quantity));
+      return multiplyDecimal(price, quantity);
     } catch {
-      return "0";
+      return null;
     }
   }, [price, quantity]);
   const entryFee = useMemo(() => {
-    if (!entryFeeRate) return null;
+    if (!entryFeeRate || gross === null) return null;
     try {
       return percentOf(gross, entryFeeRate);
     } catch {
@@ -338,8 +408,46 @@ function SubscriptionFlow({
   }, [gross, entryFeeRate]);
 
   useEffect(() => {
-    if (step !== "amount") window.scrollTo({ top: 0, behavior: "smooth" });
+    const stored = readOrderIntent(userId, estate.id);
+    setStorageState(stored.status);
+    if (stored.status !== "ready") return;
+    setIntent(stored.intent);
+    setLegacyIntent(stored.legacy);
+    if (stored.intent) {
+      setQuantity(stored.intent.quantity);
+      setRaw(String(stored.intent.quantity));
+      if (stored.intent.orderRef) {
+        setOrderRef(stored.intent.orderRef);
+        setStep("done");
+      }
+    }
+  }, [estate.id, userId]);
+
+  useEffect(() => {
+    if (previousStep.current === step) return;
+    previousStep.current = step;
+    if (step === "done") doneHeadingRef.current?.focus();
+    else stepHeadingRef.current?.focus();
   }, [step]);
+
+  useEffect(() => {
+    if (!orderRef) return;
+    let active = true;
+    setCheckedOrderRef(undefined);
+    void orderQuery.refetch().then((result) => {
+      if (active && result.isSuccess) setCheckedOrderRef(orderRef);
+    });
+    return () => {
+      active = false;
+    };
+  }, [orderRef, orderQuery.refetch]);
+
+  useEffect(() => {
+    if (step !== "amount" || amountMode !== "budget" || pendingIntent) return;
+    const next = budget?.quantity ?? 0;
+    setQuantity(next);
+    setRaw(String(next));
+  }, [amountMode, budget?.quantity, pendingIntent, step]);
 
   const setQty = (n: number) => {
     const v = Math.max(0, Math.floor(n));
@@ -348,16 +456,55 @@ function SubscriptionFlow({
   };
 
   const toReview = () => {
-    if (outOfRange) return;
-    setIntent(intentFor(estate.id, quantity));
+    if (
+      (outOfRange && !pendingIntent) ||
+      (!detailsAvailable && !pendingIntent) ||
+      legacyIntent
+    ) {
+      return;
+    }
+    const current =
+      intent?.quantity === quantity
+        ? intent
+        : { quantity, key: newIdempotencyKey(), submitted: false };
+    if (!saveOrderIntent(userId, estate.id, current)) {
+      setStorageMessage(
+        "Your request could not be saved in this browser. Enable session storage before continuing.",
+      );
+      return;
+    }
+    setStorageMessage(null);
+    setIntent(current);
     setAck({ risk: false, terms: false });
     create.reset();
     setStep("review");
   };
 
   const submit = () => {
-    const current = intent ?? intentFor(estate.id, quantity);
-    setIntent(current);
+    if (
+      !ack.risk ||
+      !ack.terms ||
+      create.isPending ||
+      legacyIntent ||
+      (!detailsAvailable && !pendingIntent)
+    ) {
+      return;
+    }
+    const current = intent ?? {
+      quantity,
+      key: newIdempotencyKey(),
+      submitted: false,
+    };
+    const wasSubmitted = current.submitted;
+    const submitted = { ...current, submitted: true };
+    if (!saveOrderIntent(userId, estate.id, submitted)) {
+      setStorageMessage(
+        "Your request could not be saved in this browser. No order was submitted.",
+      );
+      return;
+    }
+    setStorageMessage(null);
+    setIntent(submitted);
     create.mutate(
       {
         realEstateId: estate.id,
@@ -366,21 +513,23 @@ function SubscriptionFlow({
       },
       {
         onSuccess: (order) => {
-          saveIntent(estate.id, null);
-          setPlaced(order);
+          const completed = { ...submitted, orderRef: order.orderRef };
+          if (!saveOrderIntent(userId, estate.id, completed)) {
+            setStorageMessage(
+              "The order was placed, but its reference could not be saved in this browser. Find it in My orders before starting another request.",
+            );
+          }
+          setIntent(completed);
+          setOrderRef(order.orderRef);
           setStep("done");
         },
         onError: (error) => {
-          // A definitive refusal ends the intent; transient failures keep the
-          // key so the retry is deduplicated by the backend.
           const status = error instanceof ApiError ? error.status : 0;
           if (
-            status >= 400 &&
-            status < 500 &&
-            status !== 408 &&
-            status !== 429
+            !wasSubmitted &&
+            [400, 403, 404, 409].includes(status) &&
+            clearOrderIntent(userId, estate.id)
           ) {
-            saveIntent(estate.id, null);
             setIntent(null);
           }
         },
@@ -390,6 +539,86 @@ function SubscriptionFlow({
 
   const stepIndex = STEPS.findIndex((s) => s.key === step);
   const failure = create.isError ? describeError(create.error) : null;
+  const placed =
+    orderQuery.isError || checkedOrderRef !== orderRef
+      ? undefined
+      : orderQuery.data;
+
+  const resumeLegacy = () => {
+    if (!legacyIntent || intent?.submitted) return;
+    if (!saveOrderIntent(userId, estate.id, legacyIntent)) {
+      setStorageMessage(
+        "The earlier request could not be saved to this account.",
+      );
+      return;
+    }
+    setIntent(legacyIntent);
+    setQuantity(legacyIntent.quantity);
+    setRaw(String(legacyIntent.quantity));
+    setAmountMode("shares");
+    if (legacyIntent.orderRef) {
+      setOrderRef(legacyIntent.orderRef);
+      setStep("done");
+    }
+    if (clearLegacyOrderIntent(estate.id)) {
+      setLegacyIntent(null);
+      setStorageMessage(null);
+    } else {
+      setStorageMessage(
+        "The request was saved, but its unassigned browser record could not be removed.",
+      );
+    }
+  };
+
+  const discardLegacy = () => {
+    if (!legacyDiscardConfirmed) return;
+    if (!clearLegacyOrderIntent(estate.id)) {
+      setStorageMessage("The unassigned browser request could not be removed.");
+      return;
+    }
+    setLegacyIntent(null);
+    setLegacyDiscardConfirmed(false);
+    setStorageMessage(null);
+  };
+
+  const startAnother = () => {
+    if (!clearOrderIntent(userId, estate.id)) {
+      setStorageMessage(
+        "The saved request could not be cleared in this browser.",
+      );
+      return;
+    }
+    setStorageMessage(null);
+    setIntent(null);
+    setOrderRef(undefined);
+    setQty(minQty);
+    setAmountMode("shares");
+    setRawBudget("");
+    setAck({ risk: false, terms: false });
+    create.reset();
+    setStep("amount");
+  };
+
+  if (storageState === "loading") return <PageSkeleton />;
+  if (storageState !== "ready") {
+    return (
+      <Blocking
+        crumbs={crumbs}
+        icon={ShieldAlert}
+        title="Saved request unavailable"
+        description={
+          storageState === "invalid"
+            ? "A saved request could not be read safely. Check My orders before starting another subscription."
+            : "Session storage is unavailable. It is needed to prevent duplicate order requests."
+        }
+        action={
+          <Button asChild variant="outline">
+            <Link href="/orders">View My orders</Link>
+          </Button>
+        }
+      />
+    );
+  }
 
   return (
     <div>
@@ -399,6 +628,94 @@ function SubscriptionFlow({
         title={title}
         description="Subscribe to security tokens representing shares of this real-estate vehicle."
       />
+
+      {storageMessage ? (
+        <div
+          role="alert"
+          className="mb-6 rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800"
+        >
+          {storageMessage}
+        </div>
+      ) : null}
+
+      {!detailsAvailable ? (
+        <div
+          role="alert"
+          className="mb-6 rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900"
+        >
+          <p>
+            Current offering or order details could not be refreshed. Your
+            entries are preserved; retry before starting a new request.
+          </p>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            className="mt-2"
+            onClick={retryDetails}
+          >
+            Retry
+          </Button>
+        </div>
+      ) : null}
+
+      {legacyIntent ? (
+        <section className="mb-6 rounded-md border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+          <h2 className="font-semibold">Earlier unassigned request</h2>
+          <p className="mt-1">
+            This browser has an earlier request for{" "}
+            {formatNumber(legacyIntent.quantity)} shares, but its account is
+            unknown. Check your orders first. If the request belongs to this
+            account, resume it with its original key to avoid a duplicate.
+          </p>
+          <div className="mt-3 flex flex-wrap gap-2">
+            <Button asChild size="sm" variant="outline">
+              <Link href="/orders">View My orders</Link>
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              onClick={resumeLegacy}
+              disabled={!!intent?.submitted}
+            >
+              Resume my earlier request
+            </Button>
+          </div>
+          {intent?.submitted ? (
+            <p className="mt-2">
+              Resolve the request already saved to this account before resuming
+              another.
+            </p>
+          ) : null}
+          <label
+            htmlFor="discard-legacy"
+            className="mt-4 flex items-start gap-2"
+          >
+            <Checkbox
+              id="discard-legacy"
+              checked={legacyDiscardConfirmed}
+              onCheckedChange={(value) =>
+                setLegacyDiscardConfirmed(value === true)
+              }
+            />
+            <span>
+              I have checked My orders and want to discard this unassigned
+              browser request.
+            </span>
+          </label>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            className="mt-2"
+            onClick={discardLegacy}
+            disabled={!legacyDiscardConfirmed}
+          >
+            Discard unassigned request
+          </Button>
+        </section>
+      ) : null}
 
       <ol className="mb-6 flex items-center gap-2 text-sm" aria-label="Steps">
         {STEPS.map((s, i) => (
@@ -422,7 +739,7 @@ function SubscriptionFlow({
             </span>
             <span
               className={cn(
-                "hidden sm:inline",
+                i === stepIndex ? "inline" : "hidden sm:inline",
                 i === stepIndex
                   ? "font-medium text-ink"
                   : "text-muted-foreground",
@@ -439,10 +756,24 @@ function SubscriptionFlow({
           {step === "amount" ? (
             <Panel>
               <PanelHeader
-                title="How many shares?"
+                title={
+                  <span ref={stepHeadingRef} tabIndex={-1}>
+                    Choose your subscription amount
+                  </span>
+                }
                 description={`One share = ${formatMoney(price, currency)}. Whole shares only.`}
               />
               <PanelBody className="space-y-6">
+                {pendingIntent ? (
+                  <output className="block rounded-md border border-amber-200 bg-amber-50 px-3 py-2.5 text-sm text-amber-900">
+                    An earlier request for {formatNumber(quantity)} shares may
+                    already have been placed. Check{" "}
+                    <Link href="/orders" className="underline">
+                      My orders
+                    </Link>{" "}
+                    or continue with the same request to retry safely.
+                  </output>
+                ) : null}
                 {max < minQty ? (
                   <div
                     role="alert"
@@ -455,144 +786,222 @@ function SubscriptionFlow({
                         : `The shares still available to you are below the minimum investment of ${formatMoney(cfg.min_investment, currency)}.`}
                   </div>
                 ) : null}
-                <div className="space-y-2">
-                  <Label
-                    htmlFor="quantity"
-                    className="text-xs font-medium text-ink/80"
+                <fieldset className="space-y-2">
+                  <legend className="text-xs font-medium text-ink/80">
+                    Choose an amount by
+                  </legend>
+                  <RadioGroup
+                    value={amountMode}
+                    disabled={pendingIntent}
+                    onValueChange={(value) => {
+                      if (value === "budget") {
+                        setAmountMode("budget");
+                        setQty(budget?.quantity ?? 0);
+                      } else {
+                        setAmountMode("shares");
+                        setQty(quantity >= minQty ? quantity : minQty);
+                      }
+                    }}
+                    className="flex flex-wrap gap-x-6 gap-y-2"
                   >
-                    Number of shares
-                  </Label>
-                  <div className="flex items-stretch gap-2">
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="icon-lg"
-                      onClick={() => setQty(quantity - 1)}
-                      disabled={quantity <= minQty}
-                      aria-label="Decrease quantity"
-                    >
-                      <Minus />
-                    </Button>
-                    <Input
-                      id="quantity"
-                      inputMode="numeric"
-                      value={raw}
-                      onChange={(ev) => {
-                        const v = ev.target.value.replace(/[^\d]/g, "");
-                        setRaw(v);
-                        setQuantity(v ? Number.parseInt(v, 10) : 0);
-                      }}
-                      onBlur={() => setRaw(String(quantity))}
-                      className="h-10 max-w-40 text-center text-lg font-semibold tabular"
-                      aria-invalid={outOfRange}
-                      aria-describedby="quantity-hint"
-                    />
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="icon-lg"
-                      onClick={() => setQty(quantity + 1)}
-                      disabled={quantity >= max}
-                      aria-label="Increase quantity"
-                    >
-                      <Plus />
-                    </Button>
-                  </div>
-                  <p
-                    id="quantity-hint"
-                    className={cn(
-                      "text-xs",
-                      outOfRange && max > 0
-                        ? "text-red-600"
-                        : "text-muted-foreground",
-                    )}
-                  >
-                    {max >= minQty && max < Number.MAX_SAFE_INTEGER
-                      ? `Between ${formatNumber(minQty)} and ${formatNumber(max)} shares.`
-                      : `At least ${formatNumber(minQty)} share${minQty > 1 ? "s" : ""}.`}
-                    {cfg.min_investment || cfg.max_investment
-                      ? ` Investment limits: ${[
-                          cfg.min_investment &&
-                            `min. ${formatMoney(cfg.min_investment, currency)}`,
-                          cfg.max_investment &&
-                            `max. ${formatMoney(cfg.max_investment, currency)}`,
-                        ]
-                          .filter(Boolean)
-                          .join(", ")}.`
-                      : ""}
-                    {committed > 0
-                      ? ` You already hold or have reserved ${formatNumber(committed)} shares of this offering.`
-                      : ""}
-                  </p>
-                </div>
-
-                <fieldset className="flex flex-wrap gap-2">
-                  <legend className="sr-only">Quick picks</legend>
-                  {QUICK_PICKS.filter((n) => n >= minQty && n <= max).map(
-                    (n) => (
-                      <Button
-                        key={n}
-                        type="button"
-                        size="sm"
-                        variant={quantity === n ? "default" : "outline"}
-                        onClick={() => setQty(n)}
-                        className="tabular"
-                      >
-                        {formatNumber(n)}
-                      </Button>
-                    ),
-                  )}
-                  {max >= minQty && max < Number.MAX_SAFE_INTEGER ? (
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant={quantity === max ? "default" : "outline"}
-                      onClick={() => setQty(max)}
-                    >
-                      Max ({formatNumber(max)})
-                    </Button>
-                  ) : null}
+                    <div className="flex items-center gap-2">
+                      <RadioGroupItem value="shares" id="amount-by-shares" />
+                      <Label htmlFor="amount-by-shares">Shares</Label>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <RadioGroupItem value="budget" id="amount-by-budget" />
+                      <Label htmlFor="amount-by-budget">
+                        Budget excluding fees
+                      </Label>
+                    </div>
+                  </RadioGroup>
                 </fieldset>
+
+                {amountMode === "budget" ? (
+                  <div className="space-y-2">
+                    <Label htmlFor="budget" className="text-xs font-medium">
+                      Budget excluding fees ({currency})
+                    </Label>
+                    <Input
+                      id="budget"
+                      inputMode="decimal"
+                      value={rawBudget}
+                      maxLength={30}
+                      onChange={(event) => {
+                        const next = event.target.value;
+                        setRawBudget(next);
+                        setQty(budgetToShares(next, price, max)?.quantity ?? 0);
+                      }}
+                      className="h-10 max-w-56 text-lg font-semibold tabular"
+                      aria-invalid={rawBudget !== "" && outOfRange}
+                      aria-describedby="budget-hint"
+                    />
+                    <p
+                      id="budget-hint"
+                      className={cn(
+                        "text-xs",
+                        rawBudget !== "" && outOfRange
+                          ? "text-red-600"
+                          : "text-muted-foreground",
+                      )}
+                      aria-live="polite"
+                    >
+                      {budget
+                        ? `${formatNumber(budget.quantity)} whole shares; ${formatMoney(budget.remainder, currency)} remains from this budget. Fees are additional.`
+                        : "Enter an amount using a decimal point. Fees are additional."}
+                      {budget && budget.quantity < minQty
+                        ? ` The minimum is ${formatNumber(minQty)} share${minQty === 1 ? "" : "s"}.`
+                        : ""}
+                      {max >= minQty && max < Number.MAX_SAFE_INTEGER
+                        ? ` Maximum available to you: ${formatNumber(max)} shares.`
+                        : ""}
+                    </p>
+                  </div>
+                ) : (
+                  <>
+                    <div className="space-y-2">
+                      <Label
+                        htmlFor="quantity"
+                        className="text-xs font-medium text-ink/80"
+                      >
+                        Number of shares
+                      </Label>
+                      <div className="flex items-stretch gap-2">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="icon-lg"
+                          onClick={() => setQty(quantity - 1)}
+                          disabled={pendingIntent || quantity <= minQty}
+                          aria-label="Decrease quantity"
+                        >
+                          <Minus />
+                        </Button>
+                        <Input
+                          id="quantity"
+                          inputMode="numeric"
+                          value={raw}
+                          onChange={(ev) => {
+                            const v = ev.target.value.replace(/[^\d]/g, "");
+                            setRaw(v);
+                            setQuantity(v ? Number.parseInt(v, 10) : 0);
+                          }}
+                          disabled={pendingIntent}
+                          className="h-10 max-w-40 text-center text-lg font-semibold tabular"
+                          aria-invalid={outOfRange}
+                          aria-describedby="quantity-hint"
+                        />
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="icon-lg"
+                          onClick={() => setQty(quantity + 1)}
+                          disabled={pendingIntent || quantity >= max}
+                          aria-label="Increase quantity"
+                        >
+                          <Plus />
+                        </Button>
+                      </div>
+                      <p
+                        id="quantity-hint"
+                        className={cn(
+                          "text-xs",
+                          outOfRange && max > 0
+                            ? "text-red-600"
+                            : "text-muted-foreground",
+                        )}
+                      >
+                        {max >= minQty && max < Number.MAX_SAFE_INTEGER
+                          ? `Between ${formatNumber(minQty)} and ${formatNumber(max)} shares.`
+                          : `At least ${formatNumber(minQty)} share${minQty > 1 ? "s" : ""}.`}
+                        {cfg.min_investment || cfg.max_investment
+                          ? ` Investment limits: ${[
+                              cfg.min_investment &&
+                                `min. ${formatMoney(cfg.min_investment, currency)}`,
+                              cfg.max_investment &&
+                                `max. ${formatMoney(cfg.max_investment, currency)}`,
+                            ]
+                              .filter(Boolean)
+                              .join(", ")}.`
+                          : ""}
+                        {committed > 0
+                          ? ` You already hold or have reserved ${formatNumber(committed)} shares of this offering.`
+                          : ""}
+                      </p>
+                    </div>
+
+                    <fieldset className="flex flex-wrap gap-2">
+                      <legend className="sr-only">Quick picks</legend>
+                      {QUICK_PICKS.filter((n) => n >= minQty && n <= max).map(
+                        (n) => (
+                          <Button
+                            key={n}
+                            type="button"
+                            size="sm"
+                            variant={quantity === n ? "default" : "outline"}
+                            onClick={() => setQty(n)}
+                            disabled={pendingIntent}
+                            className="tabular"
+                          >
+                            {formatNumber(n)}
+                          </Button>
+                        ),
+                      )}
+                      {max >= minQty && max < Number.MAX_SAFE_INTEGER ? (
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant={quantity === max ? "default" : "outline"}
+                          onClick={() => setQty(max)}
+                          disabled={pendingIntent}
+                        >
+                          Max ({formatNumber(max)})
+                        </Button>
+                      ) : null}
+                    </fieldset>
+                  </>
+                )}
 
                 <div className="rounded-md bg-muted/60 p-4">
                   <div className="flex items-baseline justify-between gap-4">
                     <span className="text-sm text-muted-foreground">
-                      Gross amount
+                      Estimated total including fees
                     </span>
                     <span
                       className="text-2xl font-semibold text-ink tabular"
                       aria-live="polite"
                     >
-                      {formatMoney(gross, currency)}
+                      {entryFee === null || gross === null
+                        ? "To be confirmed"
+                        : formatMoney(addDecimal(gross, entryFee), currency)}
                     </span>
                   </div>
-                  <p className="mt-1 text-right text-xs text-muted-foreground tabular">
-                    {formatNumber(quantity)} × {formatMoney(price, currency)}
-                    {entryFee === null
-                      ? " · fees calculated at order placement"
-                      : ""}
+                  <dl className="mt-3 space-y-1 border-t border-border pt-3 text-sm tabular">
+                    <div className="flex justify-between gap-4">
+                      <dt className="text-muted-foreground">
+                        Gross amount ({formatNumber(quantity)} ×{" "}
+                        {formatMoney(price, currency)})
+                      </dt>
+                      <dd className="text-ink">
+                        {formatMoney(gross, currency)}
+                      </dd>
+                    </div>
+                    <div className="flex justify-between gap-4">
+                      <dt className="text-muted-foreground">
+                        {entryFee === null
+                          ? "Fees"
+                          : `Entry fee (${formatPercent(entryFeeRate)})`}
+                      </dt>
+                      <dd className="text-ink">
+                        {entryFee === null
+                          ? "Calculated at placement"
+                          : formatMoney(entryFee, currency)}
+                      </dd>
+                    </div>
+                  </dl>
+                  <p className="pt-2 text-right text-xs text-muted-foreground">
+                    Final amount confirmed at order placement
                   </p>
-                  {entryFee !== null ? (
-                    <dl className="mt-3 space-y-1 border-t border-border pt-3 text-sm tabular">
-                      <div className="flex justify-between gap-4">
-                        <dt className="text-muted-foreground">
-                          Entry fee ({formatPercent(entryFeeRate)})
-                        </dt>
-                        <dd className="text-ink">
-                          {formatMoney(entryFee, currency)}
-                        </dd>
-                      </div>
-                      <div className="flex justify-between gap-4 font-semibold">
-                        <dt className="text-ink">Estimated total</dt>
-                        <dd className="text-ink">
-                          {formatMoney(addDecimal(gross, entryFee), currency)}
-                        </dd>
-                      </div>
-                      <p className="pt-1 text-right text-xs font-normal text-muted-foreground">
-                        Final amount confirmed at order placement
-                      </p>
-                    </dl>
-                  ) : null}
                 </div>
 
                 <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-between">
@@ -603,10 +1012,15 @@ function SubscriptionFlow({
                   </Button>
                   <Button
                     onClick={toReview}
-                    disabled={outOfRange}
+                    disabled={
+                      (outOfRange && !pendingIntent) ||
+                      (!detailsAvailable && !pendingIntent) ||
+                      !!legacyIntent
+                    }
                     className="bg-brand text-brand-foreground hover:bg-brand-light"
                   >
-                    Review order <ArrowRight />
+                    {pendingIntent ? "Review saved request" : "Review order"}{" "}
+                    <ArrowRight />
                   </Button>
                 </div>
               </PanelBody>
@@ -616,10 +1030,25 @@ function SubscriptionFlow({
           {step === "review" ? (
             <Panel>
               <PanelHeader
-                title="Review your order"
-                description="Check the details before placing the order. Shares are reserved once it is placed."
+                title={
+                  <span ref={stepHeadingRef} tabIndex={-1}>
+                    Review your order
+                  </span>
+                }
+                description="Placing the order reserves shares for a limited time. You will need to pay by bank transfer before the reservation ends."
               />
               <PanelBody className="space-y-6">
+                {pendingIntent ? (
+                  <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2.5 text-sm text-amber-900">
+                    This request may already have been placed. Retrying uses the
+                    same key; any existing order returned will contain its
+                    confirmed amounts. You can also check{" "}
+                    <Link href="/orders" className="underline">
+                      My orders
+                    </Link>
+                    .
+                  </div>
+                ) : null}
                 <KeyValueList
                   items={[
                     { label: "Offering", value: title },
@@ -639,7 +1068,7 @@ function SubscriptionFlow({
                       label: "Gross amount",
                       value: formatMoney(gross, currency),
                     },
-                    ...(entryFee === null
+                    ...(entryFee === null || gross === null
                       ? [
                           {
                             label: "Fees",
@@ -675,6 +1104,13 @@ function SubscriptionFlow({
                   <legend className="mb-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">
                     Acknowledgements
                   </legend>
+                  <p
+                    id="subscription-documents-unavailable"
+                    className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900"
+                  >
+                    The risk disclosure and subscription terms are not currently
+                    available to review in this application.
+                  </p>
                   <label
                     htmlFor="ack-risk"
                     className="flex cursor-pointer gap-3 rounded-md border border-border p-3 text-sm hover:bg-muted/40"
@@ -682,6 +1118,7 @@ function SubscriptionFlow({
                     <Checkbox
                       id="ack-risk"
                       checked={ack.risk}
+                      aria-describedby="subscription-documents-unavailable"
                       onCheckedChange={(v) =>
                         setAck((a) => ({ ...a, risk: v === true }))
                       }
@@ -701,6 +1138,7 @@ function SubscriptionFlow({
                     <Checkbox
                       id="ack-terms"
                       checked={ack.terms}
+                      aria-describedby="subscription-documents-unavailable"
                       onCheckedChange={(v) =>
                         setAck((a) => ({ ...a, terms: v === true }))
                       }
@@ -728,13 +1166,19 @@ function SubscriptionFlow({
                   <Button
                     variant="ghost"
                     onClick={() => setStep("amount")}
-                    disabled={create.isPending}
+                    disabled={create.isPending || pendingIntent}
                   >
                     <ArrowLeft /> Change amount
                   </Button>
                   <Button
                     onClick={submit}
-                    disabled={!ack.risk || !ack.terms || create.isPending}
+                    disabled={
+                      !ack.risk ||
+                      !ack.terms ||
+                      create.isPending ||
+                      (!detailsAvailable && !pendingIntent) ||
+                      !!legacyIntent
+                    }
                     className="bg-brand text-brand-foreground hover:bg-brand-light"
                   >
                     {create.isPending ? <TookenLoader size={16} /> : null}
@@ -745,7 +1189,7 @@ function SubscriptionFlow({
             </Panel>
           ) : null}
 
-          {step === "done" && placed ? (
+          {step === "done" && orderRef ? (
             <>
               <Panel>
                 <PanelBody className="flex flex-col items-start gap-4 sm:flex-row sm:items-center">
@@ -753,67 +1197,103 @@ function SubscriptionFlow({
                     <CheckCircle2 className="size-6" aria-hidden />
                   </span>
                   <div className="min-w-0 flex-1">
-                    <h2 className="text-lg font-semibold text-ink">
-                      Order placed
+                    <h2
+                      ref={doneHeadingRef}
+                      tabIndex={-1}
+                      className="text-lg font-semibold text-ink"
+                    >
+                      {orderQuery.isError
+                        ? "Order saved — status unavailable"
+                        : placed
+                          ? "Order recorded"
+                          : "Checking order status"}
                     </h2>
                     <p className="text-sm text-muted-foreground">
                       Reference{" "}
-                      <span className="font-mono text-ink">
-                        {placed.orderRef}
-                      </span>{" "}
-                      · {formatNumber(placed.tokenQuantity)} shares reserved
+                      <span className="break-all font-mono text-ink">
+                        {orderRef}
+                      </span>
+                      {placed
+                        ? ` · ${formatNumber(placed.tokenQuantity)} shares`
+                        : ""}
                     </p>
                   </div>
-                  <OrderStatusBadge code={placed.statusCode} />
+                  {placed ? (
+                    <OrderStatusBadge code={placed.statusCode} />
+                  ) : null}
                 </PanelBody>
               </Panel>
 
-              <ReservationCountdown expiresAt={placed.reservationExpiresAt} />
-
-              <Panel>
-                <PanelHeader title="Amount due" />
-                <PanelBody>
-                  <KeyValueList
-                    items={[
-                      {
-                        label: "Gross amount",
-                        value: formatMoney(
-                          placed.grossAmount,
-                          placed.currencyCode,
-                        ),
-                      },
-                      ...(placed.fees ?? []).map((f) => ({
-                        label: `${f.code === "ENTRY" ? "Entry fee" : f.code} (${formatPercent(f.rate)})`,
-                        value: formatMoney(f.amount, placed.currencyCode),
-                      })),
-                    ]}
+              {orderQuery.isError ? (
+                <Panel>
+                  <ErrorState
+                    title="Current order status could not be checked"
+                    error={orderQuery.error}
+                    onRetry={() => {
+                      void orderQuery.refetch().then((result) => {
+                        if (result.isSuccess) setCheckedOrderRef(orderRef);
+                      });
+                    }}
                   />
-                  <div className="mt-2 flex items-center justify-between border-t border-border pt-3">
-                    <span className="text-sm font-semibold text-ink">
-                      Total to pay
-                    </span>
-                    <span className="text-xl font-semibold text-ink tabular">
-                      {formatMoney(placed.amountDue, placed.currencyCode)}
-                    </span>
-                  </div>
-                </PanelBody>
-              </Panel>
+                </Panel>
+              ) : placed ? (
+                <>
+                  <OrderPaymentSection order={placed} />
 
-              <SettlementInstructions
-                amountDue={placed.amountDue}
-                currency={placed.currencyCode}
-                orderRef={placed.orderRef}
-              />
+                  <Panel>
+                    <PanelHeader title="Order total" />
+                    <PanelBody>
+                      <KeyValueList
+                        items={[
+                          {
+                            label: "Gross amount",
+                            value: formatMoney(
+                              placed.grossAmount,
+                              placed.currencyCode,
+                            ),
+                          },
+                          ...(placed.fees ?? []).map((f) => ({
+                            label: `${f.code === "ENTRY" ? "Entry fee" : f.code} (${formatPercent(f.rate)})`,
+                            value: formatRecordedMoney(
+                              f.amount,
+                              placed.currencyCode,
+                            ),
+                          })),
+                        ]}
+                      />
+                      <div className="mt-2 flex items-center justify-between border-t border-border pt-3">
+                        <span className="text-sm font-semibold text-ink">
+                          Total
+                        </span>
+                        <span className="text-xl font-semibold text-ink tabular">
+                          {formatRecordedMoney(
+                            placed.amountDue,
+                            placed.currencyCode,
+                          )}
+                        </span>
+                      </div>
+                    </PanelBody>
+                  </Panel>
+                </>
+              ) : (
+                <output className="block text-sm text-muted-foreground">
+                  Checking the current order status before showing payment
+                  instructions.
+                </output>
+              )}
 
-              <div className="flex flex-col gap-2 sm:flex-row sm:justify-end">
+              <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:justify-end">
                 <Button asChild variant="outline">
                   <Link href="/explore">Back to the marketplace</Link>
+                </Button>
+                <Button type="button" variant="outline" onClick={startAnother}>
+                  Start a separate subscription
                 </Button>
                 <Button
                   asChild
                   className="bg-brand text-brand-foreground hover:bg-brand-light"
                 >
-                  <Link href={`/orders/${encodeURIComponent(placed.orderRef)}`}>
+                  <Link href={`/orders/${encodeURIComponent(orderRef)}`}>
                     Track this order <ArrowRight />
                   </Link>
                 </Button>

@@ -10,12 +10,14 @@ const query = vi.hoisted(() => ({
   refetch: vi.fn(),
 }));
 
+const session = vi.hoisted(() => ({ current: {} as Record<string, unknown> }));
+
 vi.mock("@/lib/api/hooks", () => ({
   useRealEstates: () => query,
 }));
 
 vi.mock("@/lib/auth/session-context", () => ({
-  useSession: () => ({ ready: true, isAuthenticated: false }),
+  useSession: () => session.current,
 }));
 
 vi.mock("@/components/app/favorite-button", () => ({
@@ -26,6 +28,7 @@ describe("LandingPage asset spotlight", () => {
   beforeEach(() => {
     query.data = [];
     query.isError = false;
+    session.current = { ready: true, isAuthenticated: false };
     vi.stubGlobal(
       "matchMedia",
       vi.fn().mockReturnValue({
@@ -173,6 +176,78 @@ describe("LandingPage asset spotlight", () => {
       carousel.getByRole("link", { name: "View River House" }),
     ).toBeInTheDocument();
   });
+
+  it("pauses while keyboard focus is inside the carousel", () => {
+    vi.useFakeTimers();
+    query.data = [
+      {
+        id: 1,
+        title: "River House",
+        status: "fundraising",
+        imageurl: "/river.jpg",
+      },
+      {
+        id: 2,
+        title: "Garden House",
+        status: "published",
+        imageurl: "/garden.jpg",
+      },
+    ];
+    render(<LandingPage />);
+    const carousel = within(
+      screen.getByRole("figure", { name: "Featured assets" }),
+    );
+    const link = carousel.getByRole("link", { name: "View River House" });
+    fireEvent.focus(link);
+    act(() => vi.advanceTimersByTime(12000));
+    expect(link).toBeInTheDocument();
+    fireEvent.blur(link, { relatedTarget: document.body });
+    act(() => vi.advanceTimersByTime(8000));
+    expect(
+      carousel.getByRole("link", { name: "View Garden House" }),
+    ).toBeInTheDocument();
+  });
+
+  it("keeps currencies separate and marks incomplete valuations", () => {
+    query.data = [
+      {
+        id: 1,
+        status: "fundraising",
+        configuration: { currency_code: "EUR", total_valuation: "100" },
+      },
+      {
+        id: 2,
+        status: "published",
+        configuration: { currency_code: "USD", total_valuation: "200" },
+      },
+      { id: 3, status: "published", configuration: { total_valuation: "50" } },
+    ];
+    render(<LandingPage />);
+    const value = screen.getByText(
+      "Known listed asset values",
+    ).nextElementSibling;
+    expect(value).toHaveTextContent("€100");
+    expect(value).toHaveTextContent("US$200");
+    expect(value).not.toHaveTextContent("€150");
+  });
+
+  it.each([
+    ["USER", false, "Dashboard", "/dashboard"],
+    ["MANAGER", true, "Back office", "/admin"],
+  ] as const)(
+    "directs a signed-in %s to their workspace",
+    (role, isStaff, label, href) => {
+      session.current = { ready: true, isAuthenticated: true, role, isStaff };
+      render(<LandingPage />);
+      expect(screen.getByRole("link", { name: label })).toHaveAttribute(
+        "href",
+        href,
+      );
+      expect(
+        screen.queryByRole("link", { name: "Open an account" }),
+      ).not.toBeInTheDocument();
+    },
+  );
 
   it("does not rotate automatically when reduced motion is requested", () => {
     vi.useFakeTimers();

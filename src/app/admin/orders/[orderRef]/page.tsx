@@ -9,7 +9,8 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { useMemo, useState } from "react";
+import { useState } from "react";
+import { useNow } from "@/app/(investor)/_components/use-now";
 import { HashValue } from "@/components/app/hash-value";
 import { KeyValueList } from "@/components/app/key-value";
 import { PageHeader } from "@/components/app/page-header";
@@ -29,12 +30,12 @@ import type { IssuanceOrder } from "@/lib/api/types";
 import { useSession } from "@/lib/auth/session-context";
 import {
   formatDateTime,
-  formatMoney,
   formatNumber,
   formatPercent,
+  formatRecordedMoney,
   formatRelative,
 } from "@/lib/format";
-import { isReservationLapsed, orderBucket } from "@/lib/order-book";
+import { hasPaymentCurrency, reservationDeadlineState } from "@/lib/order-book";
 import { countryName } from "@/lib/reference";
 import { isOrderInFlight, orderStatusMeta, orderTimeline } from "@/lib/status";
 import { StepTimeline } from "../../_components/step-timeline";
@@ -99,8 +100,12 @@ function OrderDetail({ order }: { order: IssuanceOrder }) {
   const meta = orderStatusMeta(order.statusCode);
   const inFlight = isOrderInFlight(order.statusCode);
   const awaiting = order.statusCode === "AWAITING_PAYMENT";
-  const settling = inFlight && !awaiting && order.statusCode !== "CREATED";
-  const lapsed = isReservationLapsed(order);
+  const settling =
+    order.statusCode === "PAYMENT_CONFIRMED" ||
+    order.statusCode === "DELIVERY_IN_PROGRESS";
+  const now = useNow(1000, awaiting);
+  const deadline = reservationDeadlineState(order.reservationExpiresAt, now);
+  const lapsed = deadline === "lapsed";
   const token = estate.data?.token;
   const currency = order.currencyCode;
 
@@ -112,48 +117,13 @@ function OrderDetail({ order }: { order: IssuanceOrder }) {
         : s.key === "payment" && awaiting
           ? lapsed
             ? "Reservation lapsed"
-            : `Due ${formatRelative(order.reservationExpiresAt)}`
+            : deadline === "unknown"
+              ? "Deadline unavailable"
+              : `Due ${formatRelative(order.reservationExpiresAt)}`
           : s.key === "settled" && s.state === "done"
             ? formatDateTime(order.updatedAt)
             : undefined,
   }));
-
-  const audit = useMemo(() => {
-    const rows: { at: string; label: string; detail?: React.ReactNode }[] = [
-      {
-        at: order.createdAt,
-        label: "Order placed",
-        detail: `${formatNumber(order.tokenQuantity)} tokens at ${formatMoney(order.unitPrice, currency, { decimals: 2 })}${order.createdBy ? ` · by user #${order.createdBy}` : ""}`,
-      },
-    ];
-    // The reservation only matters while unpaid, or to explain an expiry.
-    if (
-      order.reservationExpiresAt &&
-      (orderBucket(order.statusCode) === "awaiting" ||
-        order.statusCode === "EXPIRED")
-    ) {
-      rows.push({
-        at: order.reservationExpiresAt,
-        label: "Reservation expiry",
-        detail: "Unpaid orders expire and release their shares",
-      });
-    }
-    for (const e of observed) {
-      rows.push({
-        at: e.at,
-        label: `Observed: ${orderStatusMeta(e.status).label}`,
-        detail: "Status change seen in this session",
-      });
-    }
-    rows.push({
-      at: order.updatedAt,
-      label: "Last status update",
-      detail: order.statusLabel ?? meta.label,
-    });
-    return rows.sort(
-      (a, b) => new Date(a.at).getTime() - new Date(b.at).getTime(),
-    );
-  }, [order, observed, currency, meta.label]);
 
   return (
     <>
@@ -173,14 +143,24 @@ function OrderDetail({ order }: { order: IssuanceOrder }) {
         ]}
         actions={
           awaiting ? (
-            <Button
-              className="bg-brand text-brand-foreground hover:bg-brand-light"
-              onClick={() => setConfirmOpen(true)}
-              disabled={!isAdmin}
-              title={isAdmin ? undefined : "Requires administrator rights"}
-            >
-              <Banknote /> Confirm payment received
-            </Button>
+            isAdmin && deadline === "active" && hasPaymentCurrency(order) ? (
+              <Button
+                className="bg-brand text-brand-foreground hover:bg-brand-light"
+                onClick={() => setConfirmOpen(true)}
+              >
+                <Banknote /> Confirm payment received
+              </Button>
+            ) : (
+              <p className="text-sm text-muted-foreground">
+                {!isAdmin
+                  ? "Only administrators can confirm payments."
+                  : lapsed
+                    ? "The reservation has ended; awaiting the server status."
+                    : deadline === "unknown"
+                      ? "The reservation deadline is unavailable."
+                      : "The payment currency is unavailable; refresh the order."}
+              </p>
+            )
           ) : null
         }
       />
@@ -198,7 +178,7 @@ function OrderDetail({ order }: { order: IssuanceOrder }) {
               inFlight ? (
                 <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
                   <span className="relative flex size-2">
-                    <span className="absolute inline-flex size-full animate-ping rounded-full bg-cyan-400 opacity-75" />
+                    <span className="absolute inline-flex size-full animate-ping rounded-full bg-cyan-400 opacity-75 motion-reduce:animate-none" />
                     <span className="relative inline-flex size-2 rounded-full bg-cyan-500" />
                   </span>
                   Live
@@ -216,16 +196,24 @@ function OrderDetail({ order }: { order: IssuanceOrder }) {
                     : "border-amber-200 bg-amber-50"
                 }
               >
-                {lapsed ? <ShieldAlert /> : <Clock />}
+                {deadline !== "active" ? <ShieldAlert /> : <Clock />}
                 <AlertTitle>
                   {lapsed
                     ? "Reservation lapsed"
-                    : `Awaiting a transfer of ${formatMoney(order.amountDue, currency)}`}
+                    : deadline === "unknown"
+                      ? "Reservation deadline unavailable"
+                      : hasPaymentCurrency(order)
+                        ? `Awaiting a transfer of ${formatRecordedMoney(order.amountDue, currency)}`
+                        : "Payment currency unavailable"}
                 </AlertTitle>
                 <AlertDescription>
                   {lapsed
                     ? "The reservation has ended: the backend will refuse a payment confirmation and expire the order."
-                    : `Shares are reserved until ${formatDateTime(order.reservationExpiresAt)}. Match the incoming transfer with reference ${order.orderRef} before confirming.`}
+                    : deadline === "unknown"
+                      ? "Refresh the order before confirming a payment."
+                      : !hasPaymentCurrency(order)
+                        ? "Refresh the order before confirming a payment."
+                        : `Shares are reserved until ${formatDateTime(order.reservationExpiresAt)}. Match the incoming transfer with reference ${order.orderRef} before confirming.`}
                 </AlertDescription>
               </Alert>
             ) : settling ? (
@@ -280,25 +268,28 @@ function OrderDetail({ order }: { order: IssuanceOrder }) {
                     },
                     {
                       label: "Unit price",
-                      value: formatMoney(order.unitPrice, currency, {
+                      value: formatRecordedMoney(order.unitPrice, currency, {
                         decimals: 2,
                       }),
                       hint: `${order.unitPrice} ${currency}`,
                     },
                     {
                       label: "Gross amount",
-                      value: formatMoney(order.grossAmount, currency),
+                      value: formatRecordedMoney(order.grossAmount, currency),
                     },
                     ...(order.fees.length
                       ? order.fees.map((f) => ({
                           label: `${f.code === "ENTRY" ? "Entry fee" : f.code} (${formatPercent(f.rate)})`,
-                          value: formatMoney(f.amount, currency),
-                          hint: `on ${formatMoney(f.baseAmount, currency)}`,
+                          value: formatRecordedMoney(f.amount, currency),
+                          hint: `on ${formatRecordedMoney(f.baseAmount, currency)}`,
                         }))
                       : [
                           {
                             label: "Fees",
-                            value: formatMoney(order.feeAmount, currency),
+                            value: formatRecordedMoney(
+                              order.feeAmount,
+                              currency,
+                            ),
                           },
                         ]),
                     {
@@ -309,7 +300,7 @@ function OrderDetail({ order }: { order: IssuanceOrder }) {
                       ),
                       value: (
                         <span className="text-base font-semibold">
-                          {formatMoney(order.amountDue, currency)}
+                          {formatRecordedMoney(order.amountDue, currency)}
                         </span>
                       ),
                     },
@@ -371,37 +362,60 @@ function OrderDetail({ order }: { order: IssuanceOrder }) {
             </Panel>
 
             <Panel>
+              <PanelHeader title="Recorded order information" />
+              <PanelBody>
+                <KeyValueList
+                  items={[
+                    {
+                      label: "Order placed",
+                      value: formatDateTime(order.createdAt),
+                    },
+                    {
+                      label: "Reservation deadline",
+                      value: formatDateTime(order.reservationExpiresAt),
+                    },
+                    {
+                      label: "Last updated",
+                      value: formatDateTime(order.updatedAt),
+                    },
+                  ]}
+                />
+              </PanelBody>
+            </Panel>
+
+            <Panel>
               <PanelHeader
-                title="Audit trail"
-                description="Timestamps recorded on the order."
+                title="Changes observed in this session"
+                description="These observations are local to this page and are not a complete audit history."
               />
               <PanelBody>
-                <ol className="relative space-y-4 border-l border-border pl-5">
-                  {audit.map((e) => (
-                    <li key={`${e.label}-${e.at}`} className="relative">
-                      <span
-                        aria-hidden
-                        className="absolute top-1.5 -left-[25px] size-2.5 rounded-full border-2 border-card bg-ink/40"
-                      />
-                      <div className="flex flex-wrap items-baseline justify-between gap-x-4">
-                        <span className="text-sm font-medium text-ink">
-                          {e.label}
-                        </span>
-                        <time
-                          dateTime={e.at}
-                          className="text-xs text-muted-foreground tabular"
-                        >
-                          {formatDateTime(e.at)}
-                        </time>
-                      </div>
-                      {e.detail ? (
-                        <div className="text-xs text-muted-foreground">
-                          {e.detail}
+                {observed.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">
+                    No status changes have been observed in this session.
+                  </p>
+                ) : (
+                  <ol className="relative space-y-4 border-l border-border pl-5">
+                    {observed.map((e) => (
+                      <li key={`${e.status}-${e.at}`} className="relative">
+                        <span
+                          aria-hidden
+                          className="absolute top-1.5 -left-[25px] size-2.5 rounded-full border-2 border-card bg-ink/40"
+                        />
+                        <div className="flex flex-wrap items-baseline justify-between gap-x-4">
+                          <span className="text-sm font-medium text-ink">
+                            {orderStatusMeta(e.status).label}
+                          </span>
+                          <time
+                            dateTime={e.at}
+                            className="text-xs text-muted-foreground tabular"
+                          >
+                            {formatDateTime(e.at)}
+                          </time>
                         </div>
-                      ) : null}
-                    </li>
-                  ))}
-                </ol>
+                      </li>
+                    ))}
+                  </ol>
+                )}
               </PanelBody>
             </Panel>
           </div>

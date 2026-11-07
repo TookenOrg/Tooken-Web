@@ -12,15 +12,15 @@ import { PageLoader, TookenLoader } from "@/components/app/tooken-loader";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { errorMessage } from "@/lib/api/client";
+import { ApiError, defaultMessage } from "@/lib/api/client";
 import { homeFor } from "@/lib/auth/routes";
 import { useSession } from "@/lib/auth/session-context";
 import {
   AuthShell,
   PASSWORD_MAX_BYTES,
-  resolveRedirect,
   utf8Length,
 } from "../_components/auth-shell";
+import { safeCallback } from "./safe-callback";
 
 const schema = z.object({
   email: z.email("Enter a valid email address."),
@@ -28,7 +28,7 @@ const schema = z.object({
     .string()
     .min(1, "Password is required.")
     .refine((v) => utf8Length(v) <= PASSWORD_MAX_BYTES, {
-      message: "Password is too long.",
+      message: `Password must be at most ${PASSWORD_MAX_BYTES} UTF-8 bytes.`,
     }),
 });
 
@@ -38,6 +38,21 @@ const DEMO_ACCOUNTS = [
   { label: "Investor", email: "claire@invest.lu", password: "Investor1234!" },
   { label: "Administrator", email: "admin@tooken.io", password: "Admin1234!" },
 ];
+
+function signInError(error: unknown): string {
+  if (error instanceof ApiError) {
+    if (error.status === 401) {
+      return "Email or password is incorrect. Please try again.";
+    }
+    if (error.status === 0 || error.status === 429 || error.status >= 500) {
+      return defaultMessage(error.status);
+    }
+    if (error.status >= 400 && error.status < 500) {
+      return "Unable to sign in with those details. Please try again.";
+    }
+  }
+  return "Unable to sign in right now. Please try again.";
+}
 
 function SignInForm() {
   const router = useRouter();
@@ -61,10 +76,10 @@ function SignInForm() {
     try {
       const user = await signIn(values.email.trim(), values.password);
       router.replace(
-        resolveRedirect(searchParams.get("callbackUrl"), homeFor(user.role)),
+        safeCallback(searchParams.get("callbackUrl"), homeFor(user.role)),
       );
     } catch (err) {
-      setError(errorMessage(err));
+      setError(signInError(err));
     }
   };
 
@@ -88,32 +103,37 @@ function SignInForm() {
           </Alert>
         ) : null}
 
-        <FormField
-          label="Email address"
-          htmlFor="email"
-          error={errors.email?.message}
-        >
+        <FormField label="Email address" htmlFor="email" required>
           <Input
             id="email"
             type="email"
             autoComplete="email"
-            placeholder="name@institution.com"
+            placeholder="name@example.com"
+            required
             aria-invalid={!!errors.email}
+            aria-describedby={errors.email ? "email-error" : undefined}
             {...register("email")}
           />
+          {errors.email ? (
+            <p id="email-error" className="text-xs text-red-600" role="alert">
+              {errors.email.message}
+            </p>
+          ) : null}
         </FormField>
 
-        <FormField
-          label="Password"
-          htmlFor="password"
-          error={errors.password?.message}
-        >
+        <FormField label="Password" htmlFor="password" required>
           <div className="relative">
             <Input
               id="password"
               type={showPassword ? "text" : "password"}
               autoComplete="current-password"
+              required
               aria-invalid={!!errors.password}
+              aria-describedby={
+                errors.password
+                  ? "password-hint password-error"
+                  : "password-hint"
+              }
               className="pr-10"
               {...register("password")}
             />
@@ -130,6 +150,19 @@ function SignInForm() {
               )}
             </button>
           </div>
+          <p id="password-hint" className="text-xs text-muted-foreground">
+            Maximum {PASSWORD_MAX_BYTES} UTF-8 bytes; some characters use more
+            than one byte.
+          </p>
+          {errors.password ? (
+            <p
+              id="password-error"
+              className="text-xs text-red-600"
+              role="alert"
+            >
+              {errors.password.message}
+            </p>
+          ) : null}
         </FormField>
 
         <Button
@@ -147,36 +180,40 @@ function SignInForm() {
         </Button>
       </form>
 
-      <section
-        aria-label="Demo accounts"
-        className="mt-6 rounded-md border border-dashed border-border bg-muted/40 p-3"
-      >
-        <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-          Demo environment — click to fill
-        </p>
-        <ul className="mt-2 grid gap-1.5 sm:grid-cols-2">
-          {DEMO_ACCOUNTS.map((a) => (
-            <li key={a.email}>
-              <button
-                type="button"
-                onClick={() => fillDemo(a.email, a.password)}
-                className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs transition hover:bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-              >
-                <UserRound
-                  className="size-3.5 shrink-0 text-muted-foreground"
-                  aria-hidden
-                />
-                <span className="min-w-0">
-                  <span className="block font-medium text-ink">{a.label}</span>
-                  <span className="block truncate font-mono text-[11px] text-muted-foreground">
-                    {a.email}
+      {process.env.NEXT_PUBLIC_DEMO_MODE === "true" ? (
+        <section
+          aria-label="Demo accounts"
+          className="mt-6 rounded-md border border-dashed border-border bg-muted/40 p-3"
+        >
+          <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+            Demo environment — click to fill
+          </p>
+          <ul className="mt-2 grid gap-1.5 sm:grid-cols-2">
+            {DEMO_ACCOUNTS.map((a) => (
+              <li key={a.email}>
+                <button
+                  type="button"
+                  onClick={() => fillDemo(a.email, a.password)}
+                  className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs transition hover:bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                >
+                  <UserRound
+                    className="size-3.5 shrink-0 text-muted-foreground"
+                    aria-hidden
+                  />
+                  <span className="min-w-0">
+                    <span className="block font-medium text-ink">
+                      {a.label}
+                    </span>
+                    <span className="block truncate font-mono text-[11px] text-muted-foreground">
+                      {a.email}
+                    </span>
                   </span>
-                </span>
-              </button>
-            </li>
-          ))}
-        </ul>
-      </section>
+                </button>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
 
       <p className="mt-8 border-t border-border pt-6 text-center text-sm text-muted-foreground">
         New to Tooken?{" "}

@@ -1,27 +1,43 @@
 "use client";
 
-import { ArrowRight, LogOut, ShieldCheck } from "lucide-react";
+import { LogOut } from "lucide-react";
 import Link from "next/link";
+import { useEffect } from "react";
 import { KeyValueList } from "@/components/app/key-value";
 import { PageHeader } from "@/components/app/page-header";
 import { Panel, PanelBody, PanelHeader } from "@/components/app/panel";
-import { PageSkeleton } from "@/components/app/states";
-import { KycStatusBadge } from "@/components/app/status-badges";
+import { ErrorState, PageSkeleton } from "@/components/app/states";
 import { roleLabel, UserAvatar } from "@/components/app/user-menu";
 import { Button } from "@/components/ui/button";
+import type { User } from "@/lib/api/types";
 import { useSession } from "@/lib/auth/session-context";
 import { formatDate, formatDateTime } from "@/lib/format";
 import { countryName } from "@/lib/reference";
-import { canInvest } from "@/lib/status";
-import { OnChainIdentityPanel } from "../_components/onchain-identity";
+import {
+  useInvestorVerification,
+  VerificationSummary,
+} from "../verification/verification-summary";
 
 export default function ProfilePage() {
-  const { user, userLoading, isInvestor, isStaff } = useSession();
-  if (userLoading || !user) return <PageSkeleton />;
+  const { user, userLoading, isInvestor, isStaff, role, refreshUser } =
+    useSession();
+  if (userLoading) return <PageSkeleton />;
+  if (!user) {
+    return (
+      <>
+        <PageHeader title="Profile" />
+        <Panel>
+          <ErrorState
+            error={new Error("Account details are unavailable.")}
+            onRetry={() => void refreshUser()}
+          />
+        </Panel>
+      </>
+    );
+  }
 
-  const status = user.kyc_status ?? "none";
-  const eligible = canInvest(status, user.kyc_expires_at);
   const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+  const displayRole = role ? roleLabel(role) : "Role unavailable";
 
   return (
     <div>
@@ -34,20 +50,20 @@ export default function ProfilePage() {
           { label: "Profile" },
         ]}
         title="Profile"
-        description="Your account details, verification status and security settings."
+        description="Your account and workspace information."
       />
 
-      <div className="grid gap-6 lg:grid-cols-3">
-        <div className="space-y-6 lg:col-span-2">
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+        <div className="min-w-0 space-y-6 lg:col-span-2">
           <Panel>
             <PanelBody className="flex items-center gap-4">
               <UserAvatar name={user.full_name} className="size-14 text-base" />
               <div className="min-w-0">
-                <div className="truncate text-lg font-semibold text-ink">
+                <div className="break-words text-lg font-semibold text-ink [overflow-wrap:anywhere]">
                   {user.full_name}
                 </div>
-                <div className="truncate text-sm text-muted-foreground">
-                  {user.email} · {roleLabel(user.role)}
+                <div className="break-words text-sm text-muted-foreground [overflow-wrap:anywhere]">
+                  {user.email} · {displayRole}
                 </div>
               </div>
             </PanelBody>
@@ -56,39 +72,37 @@ export default function ProfilePage() {
           <Panel>
             <PanelHeader
               title="Account"
-              description="Contact support to change your legal name or e-mail address."
+              description="Your name and e-mail are read-only here."
             />
             <PanelBody>
               <KeyValueList
                 columns={2}
                 items={[
-                  { label: "Full name", value: user.full_name },
-                  { label: "E-mail", value: user.email },
-                  { label: "Role", value: roleLabel(user.role) },
+                  {
+                    label: "Full name",
+                    value: <span className="break-all">{user.full_name}</span>,
+                  },
+                  {
+                    label: "E-mail",
+                    value: <span className="break-all">{user.email}</span>,
+                  },
+                  { label: "Role", value: displayRole },
                   { label: "Client ID", value: `#${user.id}`, mono: true },
                   { label: "Member since", value: formatDate(user.created_at) },
                   {
                     label: "Last sign-in",
                     value: formatDateTime(user.last_connexion),
                   },
-                  {
-                    label: "Country",
-                    value: user.country_code
-                      ? countryName(user.country_code)
-                      : "—",
-                    hint: user.country_code
-                      ? "From your verification"
-                      : undefined,
-                  },
-                  {
-                    label: "On-chain identity",
-                    value:
-                      status === "verified" ? "Registered" : "Not registered",
-                    hint:
-                      status === "verified"
-                        ? "ONCHAINID with KYC claim"
-                        : undefined,
-                  },
+                  ...(isInvestor
+                    ? [
+                        {
+                          label: "Country",
+                          value: user.country_code
+                            ? countryName(user.country_code)
+                            : "Unavailable",
+                        },
+                      ]
+                    : []),
                 ]}
               />
             </PanelBody>
@@ -96,80 +110,35 @@ export default function ProfilePage() {
 
           <Panel>
             <PanelHeader
-              title="Preferences"
-              description="Display settings applied to your workspace."
+              title="Workspace information"
+              description="Display formats used in this workspace."
             />
             <PanelBody>
               <KeyValueList
                 columns={2}
                 items={[
                   { label: "Language", value: "English (UK)" },
-                  { label: "Reference currency", value: "EUR" },
                   { label: "Number format", value: "1,234.56" },
-                  { label: "Time zone", value: timeZone },
-                  { label: "Order notifications", value: "E-mail" },
-                  { label: "Distribution notices", value: "E-mail" },
+                  {
+                    label: "Browser time zone",
+                    value: timeZone || "Unavailable",
+                  },
                 ]}
               />
             </PanelBody>
           </Panel>
         </div>
 
-        <div className="space-y-6">
+        <div className="min-w-0 space-y-6">
           {isInvestor ? (
-            <Panel>
-              <PanelHeader
-                title="Identity verification"
-                actions={
-                  <KycStatusBadge
-                    status={
-                      eligible || status !== "verified" ? status : "expired"
-                    }
-                  />
-                }
-              />
-              <PanelBody className="space-y-4">
-                <KeyValueList
-                  items={[
-                    {
-                      label: "Verified on",
-                      value: formatDate(user.kyc_verified_at),
-                    },
-                    {
-                      label: "Valid until",
-                      value: formatDate(user.kyc_expires_at),
-                    },
-                    {
-                      label: "Eligible to invest",
-                      value: eligible ? (
-                        <span className="inline-flex items-center gap-1 text-emerald-700">
-                          <ShieldCheck className="size-3.5" /> Yes
-                        </span>
-                      ) : (
-                        "No"
-                      ),
-                    },
-                  ]}
-                />
-                <Button asChild variant="outline" size="sm" className="w-full">
-                  <Link href="/verification">
-                    {eligible ? "View verification" : "Complete verification"}{" "}
-                    <ArrowRight />
-                  </Link>
-                </Button>
-              </PanelBody>
-            </Panel>
+            <InvestorProfileSummary user={user} refreshUser={refreshUser} />
           ) : null}
-
-          {isInvestor ? <OnChainIdentityPanel /> : null}
-
           <Panel>
             <PanelHeader title="Security" />
             <PanelBody className="space-y-4">
               <KeyValueList
                 items={[
                   { label: "Authentication", value: "E-mail and password" },
-                  { label: "Session", value: "Expires after 8 hours" },
                 ]}
               />
               <Button asChild variant="outline" size="sm" className="w-full">
@@ -182,5 +151,34 @@ export default function ProfilePage() {
         </div>
       </div>
     </div>
+  );
+}
+
+function InvestorProfileSummary({
+  user,
+  refreshUser,
+}: {
+  user: User;
+  refreshUser: () => Promise<unknown>;
+}) {
+  const inProgress =
+    user.kyc_status === "pending" || user.kyc_status === "approved";
+  const verification = useInvestorVerification(user, inProgress);
+
+  useEffect(() => {
+    if (!inProgress) return;
+    const id = window.setInterval(() => {
+      void refreshUser();
+    }, 5000);
+    return () => window.clearInterval(id);
+  }, [inProgress, refreshUser]);
+
+  return (
+    <VerificationSummary
+      user={user}
+      verification={verification}
+      refreshUser={refreshUser}
+      profile
+    />
   );
 }

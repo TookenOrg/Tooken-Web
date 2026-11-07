@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { IssuanceOrder } from "@/lib/api/types";
 import {
+  budgetToShares,
   committedShares,
   divideDecimal,
   formatCountdown,
@@ -85,6 +86,38 @@ describe("summarizePortfolio", () => {
     expect(s.invested).toEqual({ CHF: "5000.00" });
     expect(s.holdings[0].title).toBe("Kirchberg (renamed)");
   });
+
+  it("keeps holdings and amounts separate when an offering has different or unknown currencies", () => {
+    const s = summarizePortfolio([
+      order({ grossAmount: "100.00", currencyCode: "EUR" }),
+      order({ grossAmount: "250.00", currencyCode: "CHF" }),
+      order({ grossAmount: "12.00", currencyCode: "" }),
+      order({ grossAmount: "5.00", currencyCode: "" }),
+      order({
+        statusCode: "AWAITING_PAYMENT",
+        amountDue: "10.00",
+        currencyCode: "",
+      }),
+      order({
+        statusCode: "AWAITING_PAYMENT",
+        amountDue: "20.00",
+        currencyCode: "",
+      }),
+    ]);
+    expect(s.invested).toEqual({
+      EUR: "100.00",
+      CHF: "250.00",
+      "Currency unavailable": null,
+    });
+    expect(s.pendingAmount).toEqual({ "Currency unavailable": null });
+    expect(s.holdings).toHaveLength(3);
+    expect(s.holdings.map((h) => [h.currency, h.invested])).toEqual([
+      ["CHF", "250.00"],
+      ["Currency unavailable", null],
+      ["EUR", "100.00"],
+    ]);
+    expect(s.holdings[1].averagePrice).toBeNull();
+  });
 });
 
 describe("helpers", () => {
@@ -120,6 +153,131 @@ describe("helpers", () => {
     expect(formatCountdown(14 * 60_000 + 5_000)).toBe("14:05");
     expect(formatCountdown(3_725_000)).toBe("1:02:05");
     expect(formatCountdown(-1)).toBe("00:00");
+  });
+});
+
+describe("budgetToShares", () => {
+  it("floors purchases using exact decimal arithmetic", () => {
+    expect(budgetToShares("0.3", "0.1", 10)).toEqual({
+      quantity: 3,
+      remainder: "0.0",
+    });
+    expect(budgetToShares("0.29", "0.10", 10)).toEqual({
+      quantity: 2,
+      remainder: "0.09",
+    });
+    expect(budgetToShares("3.000", "0.33333", 100)).toEqual({
+      quantity: 9,
+      remainder: "0.00003",
+    });
+  });
+
+  it("caps the quantity and retains the unspent budget", () => {
+    expect(budgetToShares("123.45", "10.10", 3)).toEqual({
+      quantity: 3,
+      remainder: "93.15",
+    });
+    expect(budgetToShares("1.2", "0.035", 0)).toEqual({
+      quantity: 0,
+      remainder: "1.200",
+    });
+  });
+
+  it("handles zero budgets and budgets below one share", () => {
+    expect(budgetToShares("0.0000", "2.50", 10)).toEqual({
+      quantity: 0,
+      remainder: "0.0000",
+    });
+    expect(budgetToShares("0.009", "0.0100", 10)).toEqual({
+      quantity: 0,
+      remainder: "0.0090",
+    });
+  });
+
+  it("accepts trimmed decimal strings", () => {
+    expect(budgetToShares(" 01.25 ", " 0.50 ", 10)).toEqual({
+      quantity: 2,
+      remainder: "0.25",
+    });
+  });
+
+  it("rejects empty, malformed and negative budgets", () => {
+    for (const budget of [
+      "",
+      " ",
+      "abc",
+      "1e2",
+      "1,5",
+      ".5",
+      "1.",
+      "-1",
+      "-0.001",
+      " -0.00 ",
+    ]) {
+      expect(budgetToShares(budget, "1", 10), budget).toBeNull();
+    }
+  });
+
+  it("rejects empty, malformed and nonpositive prices", () => {
+    for (const price of [
+      "",
+      " ",
+      "abc",
+      "1e2",
+      "0",
+      "0.000",
+      "-1",
+      "-0.01",
+      "-0.00",
+    ]) {
+      expect(budgetToShares("10", price, 10), price).toBeNull();
+    }
+  });
+
+  it("rejects negative, noninteger and unsafe maxima", () => {
+    for (const max of [
+      -1,
+      -0.5,
+      0.5,
+      Number.NaN,
+      Number.POSITIVE_INFINITY,
+      Number.NEGATIVE_INFINITY,
+      Number.MAX_SAFE_INTEGER + 1,
+    ]) {
+      expect(budgetToShares("10", "1", max), String(max)).toBeNull();
+    }
+  });
+
+  it("caps enormous affordable quantities before converting to number", () => {
+    expect(
+      budgetToShares("9007199254740990.05", "1", Number.MAX_SAFE_INTEGER),
+    ).toEqual({ quantity: 9007199254740990, remainder: "0.05" });
+    expect(
+      budgetToShares("9007199254740991", "1", Number.MAX_SAFE_INTEGER),
+    ).toEqual({ quantity: Number.MAX_SAFE_INTEGER, remainder: "0" });
+    expect(
+      budgetToShares("9007199254740992", "1", Number.MAX_SAFE_INTEGER),
+    ).toEqual({ quantity: Number.MAX_SAFE_INTEGER, remainder: "1" });
+    expect(
+      budgetToShares(
+        "1000000000000000000000000000000000000.123456789123456789",
+        "0.000000000000000001",
+        Number.MAX_SAFE_INTEGER,
+      ),
+    ).toEqual({
+      quantity: Number.MAX_SAFE_INTEGER,
+      remainder: "1000000000000000000000000000000000000.114449589868715798",
+    });
+  });
+
+  it("preserves tiny remainders between very large amounts", () => {
+    expect(
+      budgetToShares(
+        "1000000000000000000000000000000.000000000000000001",
+        "1000000000000000000000000000000.000000000000000000",
+        10,
+      ),
+    ).toEqual({ quantity: 1, remainder: "0.000000000000000001" });
   });
 });
 

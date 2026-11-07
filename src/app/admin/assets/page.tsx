@@ -1,6 +1,6 @@
 "use client";
 
-import { Building2, Plus, Search } from "lucide-react";
+import { ArrowDown, ArrowUp, Building2, Plus, Search } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
@@ -8,6 +8,7 @@ import { PageHeader } from "@/components/app/page-header";
 import { Panel } from "@/components/app/panel";
 import { EmptyState, ErrorState, TableSkeleton } from "@/components/app/states";
 import { RealEstateStatusBadge } from "@/components/app/status-badges";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -19,40 +20,47 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { useRealEstates } from "@/lib/api/hooks";
-import { formatMoney, formatNumber, formatPercent } from "@/lib/format";
+import {
+  formatDate,
+  formatNumber,
+  formatPercent,
+  formatRecordedMoney,
+} from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { AssetCell } from "./_components/asset-cell";
+import {
+  ASSET_FILTERS,
+  type AssetFilter,
+  type AssetSortKey,
+  matchesAssetFilter,
+  type SortDirection,
+  sortAssets,
+} from "./_components/asset-list";
 import { useAssetDetails } from "./_components/use-asset-details";
-
-const FILTERS = [
-  { id: "all", label: "All" },
-  { id: "draft", label: "Drafts" },
-  { id: "published", label: "Published" },
-  { id: "fundraising", label: "Fundraising" },
-  { id: "other", label: "Funded & closed" },
-] as const;
-
-type FilterId = (typeof FILTERS)[number]["id"];
-
-function matchesFilter(status: string | undefined, f: FilterId) {
-  if (f === "all") return true;
-  if (f === "other")
-    return !["draft", "published", "fundraising"].includes(status ?? "");
-  return status === f;
-}
 
 export default function AssetsPage() {
   const router = useRouter();
   const list = useRealEstates();
   const rows = list.data ?? [];
   const details = useAssetDetails(rows.map((r) => r.id));
-  const [filter, setFilter] = useState<FilterId>("all");
+  const [filter, setFilter] = useState<AssetFilter>("all");
   const [query, setQuery] = useState("");
+  const [sort, setSort] = useState<{
+    key: AssetSortKey;
+    direction: SortDirection;
+  }>({ key: "date", direction: "desc" });
+
+  const changeSort = (key: AssetSortKey) =>
+    setSort((current) => ({
+      key,
+      direction:
+        current.key === key && current.direction === "asc" ? "desc" : "asc",
+    }));
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
-    return rows
-      .filter((r) => matchesFilter(r.status, filter))
+    const matches = rows
+      .filter((r) => matchesAssetFilter(r.status, filter))
       .filter((r) => {
         if (!q) return true;
         const d = details.byId.get(r.id);
@@ -65,20 +73,22 @@ export default function AssetsPage() {
         ]
           .filter(Boolean)
           .some((s) => String(s).toLowerCase().includes(q));
-      })
-      .sort((a, b) => (b.created_at ?? "").localeCompare(a.created_at ?? ""));
-  }, [rows, filter, query, details.byId]);
+      });
+    return sortAssets(matches, sort.key, sort.direction);
+  }, [rows, filter, query, details.byId, sort]);
 
   const counts = useMemo(() => {
-    const c: Record<FilterId, number> = {
+    const c: Record<AssetFilter, number> = {
       all: 0,
       draft: 0,
       published: 0,
       fundraising: 0,
+      funded: 0,
       other: 0,
     };
     for (const r of rows) {
-      for (const f of FILTERS) if (matchesFilter(r.status, f.id)) c[f.id]++;
+      for (const f of ASSET_FILTERS)
+        if (matchesAssetFilter(r.status, f.id)) c[f.id]++;
     }
     return c;
   }, [rows]);
@@ -106,17 +116,15 @@ export default function AssetsPage() {
 
       <Panel>
         <div className="flex flex-col gap-3 border-b border-border px-4 py-3 md:flex-row md:items-center md:justify-between md:px-5">
-          <div
-            role="tablist"
+          <fieldset
             aria-label="Filter by status"
-            className="-mx-1 flex gap-1 overflow-x-auto px-1"
+            className="-mx-1 flex min-w-0 gap-1 overflow-x-auto px-1"
           >
-            {FILTERS.map((f) => (
+            {ASSET_FILTERS.map((f) => (
               <button
                 key={f.id}
                 type="button"
-                role="tab"
-                aria-selected={filter === f.id}
+                aria-pressed={filter === f.id}
                 onClick={() => setFilter(f.id)}
                 className={cn(
                   "inline-flex shrink-0 items-center gap-2 rounded-md px-3 py-1.5 text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
@@ -125,18 +133,18 @@ export default function AssetsPage() {
                     : "text-muted-foreground hover:bg-muted hover:text-ink",
                 )}
               >
-                {f.label}
+                {f.label}{" "}
                 <span
                   className={cn(
                     "rounded px-1.5 text-[11px] tabular",
                     filter === f.id ? "bg-white/15" : "bg-muted",
                   )}
                 >
-                  {counts[f.id]}
+                  {list.isSuccess ? counts[f.id] : "—"}
                 </span>
               </button>
             ))}
-          </div>
+          </fieldset>
           <div className="relative md:w-72">
             <Search
               className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
@@ -153,6 +161,58 @@ export default function AssetsPage() {
           </div>
         </div>
 
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-4 py-3 md:px-5">
+          <p className="text-xs text-muted-foreground" aria-live="polite">
+            {list.isSuccess
+              ? `${filtered.length} of ${rows.length} assets`
+              : "Asset count unavailable"}
+          </p>
+          <label className="flex items-center gap-2 text-xs text-muted-foreground md:hidden">
+            Sort
+            <select
+              aria-label="Sort assets"
+              className="max-w-52 rounded-md border border-border bg-card px-2 py-2 text-ink"
+              value={`${sort.key}:${sort.direction}`}
+              onChange={(event) => {
+                const [key, direction] = event.target.value.split(":") as [
+                  AssetSortKey,
+                  SortDirection,
+                ];
+                setSort({ key, direction });
+              }}
+            >
+              <option value="date:desc">Newest first</option>
+              <option value="date:asc">Oldest first</option>
+              <option value="name:asc">Name A–Z</option>
+              <option value="name:desc">Name Z–A</option>
+              <option value="status:asc">Status A–Z</option>
+              <option value="status:desc">Status Z–A</option>
+              <option value="valuation:asc">Valuation: low to high</option>
+              <option value="valuation:desc">Valuation: high to low</option>
+            </select>
+          </label>
+          <p className="text-xs text-muted-foreground">
+            Valuations sort within currency, not across currencies.
+          </p>
+        </div>
+
+        {details.isError ? (
+          <Alert variant="destructive" className="m-4 w-auto">
+            <AlertTitle>Some asset details are unavailable</AlertTitle>
+            <AlertDescription>
+              Issuer or token information and search results may be incomplete.{" "}
+              <button
+                type="button"
+                className="underline"
+                onClick={() => details.refetchFailed()}
+              >
+                Retry
+              </button>
+              .
+            </AlertDescription>
+          </Alert>
+        ) : null}
+
         {list.isLoading ? (
           <TableSkeleton rows={4} cols={7} />
         ) : list.isError ? (
@@ -167,7 +227,18 @@ export default function AssetsPage() {
                 : "Create a first asset to start the origination workflow."
             }
             action={
-              rows.length ? null : (
+              rows.length ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => {
+                    setFilter("all");
+                    setQuery("");
+                  }}
+                >
+                  Reset filters
+                </Button>
+              ) : (
                 <Button asChild variant="outline">
                   <Link href="/admin/assets/new">
                     <Plus /> New asset
@@ -182,14 +253,38 @@ export default function AssetsPage() {
               <Table>
                 <TableHeader>
                   <TableRow className="hover:bg-transparent">
-                    <TableHead className="pl-5">Asset</TableHead>
+                    <SortHead
+                      label="Asset"
+                      sortKey="name"
+                      sort={sort}
+                      onSort={changeSort}
+                      className="pl-5"
+                    />
                     <TableHead>Issuer</TableHead>
-                    <TableHead>Status</TableHead>
+                    <SortHead
+                      label="Status"
+                      sortKey="status"
+                      sort={sort}
+                      onSort={changeSort}
+                    />
                     <TableHead className="text-right">Shares</TableHead>
                     <TableHead className="text-right">Price / share</TableHead>
-                    <TableHead className="text-right">Valuation</TableHead>
+                    <SortHead
+                      label="Valuation"
+                      sortKey="valuation"
+                      sort={sort}
+                      onSort={changeSort}
+                      className="text-right"
+                    />
                     <TableHead className="text-right">Yield</TableHead>
-                    <TableHead className="pr-5">Token</TableHead>
+                    <TableHead>Token</TableHead>
+                    <SortHead
+                      label="Created"
+                      sortKey="date"
+                      sort={sort}
+                      onSort={changeSort}
+                      className="pr-5"
+                    />
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -207,7 +302,13 @@ export default function AssetsPage() {
                         </TableCell>
                         <TableCell className="max-w-[180px] truncate text-sm">
                           {d?.issuer?.name ?? (
-                            <span className="text-muted-foreground">—</span>
+                            <span className="text-muted-foreground">
+                              {details.failedIds.has(r.id)
+                                ? "Unavailable"
+                                : d
+                                  ? "—"
+                                  : "Loading…"}
+                            </span>
                           )}
                         </TableCell>
                         <TableCell>
@@ -217,26 +318,40 @@ export default function AssetsPage() {
                           {formatNumber(c?.total_shares)}
                         </TableCell>
                         <TableCell className="text-right tabular">
-                          {formatMoney(c?.price_per_share, c?.currency_code)}
+                          {formatRecordedMoney(
+                            c?.price_per_share,
+                            c?.currency_code,
+                          )}
                         </TableCell>
                         <TableCell className="text-right font-medium tabular">
-                          {formatMoney(c?.total_valuation, c?.currency_code, {
-                            decimals: 0,
-                          })}
+                          {formatRecordedMoney(
+                            c?.total_valuation,
+                            c?.currency_code,
+                            {
+                              decimals: 0,
+                            },
+                          )}
                         </TableCell>
                         <TableCell className="text-right tabular">
                           {formatPercent(c?.yield)}
                         </TableCell>
-                        <TableCell className="pr-5">
+                        <TableCell>
                           {d?.token?.symbol ? (
                             <span className="rounded bg-muted px-1.5 py-0.5 font-mono text-xs">
                               {d.token.symbol}
                             </span>
                           ) : (
                             <span className="text-xs text-muted-foreground">
-                              Not tokenized
+                              {details.failedIds.has(r.id)
+                                ? "Unavailable"
+                                : d
+                                  ? "Not tokenized"
+                                  : "Loading…"}
                             </span>
                           )}
+                        </TableCell>
+                        <TableCell className="pr-5 text-sm text-muted-foreground">
+                          {formatDate(r.created_at)}
                         </TableCell>
                       </TableRow>
                     );
@@ -263,15 +378,22 @@ export default function AssetsPage() {
                         <div>
                           <dt className="text-muted-foreground">Valuation</dt>
                           <dd className="font-medium text-ink tabular">
-                            {formatMoney(c?.total_valuation, c?.currency_code, {
-                              compact: true,
-                            })}
+                            {formatRecordedMoney(
+                              c?.total_valuation,
+                              c?.currency_code,
+                              {
+                                compact: true,
+                              },
+                            )}
                           </dd>
                         </div>
                         <div>
                           <dt className="text-muted-foreground">Price</dt>
                           <dd className="font-medium text-ink tabular">
-                            {formatMoney(c?.price_per_share, c?.currency_code)}
+                            {formatRecordedMoney(
+                              c?.price_per_share,
+                              c?.currency_code,
+                            )}
                           </dd>
                         </div>
                         <div>
@@ -282,7 +404,12 @@ export default function AssetsPage() {
                         </div>
                       </dl>
                       <p className="truncate text-xs text-muted-foreground">
-                        {d?.issuer?.name ?? "—"}
+                        {d?.issuer?.name ??
+                          (details.failedIds.has(r.id)
+                            ? "Unavailable"
+                            : d
+                              ? "—"
+                              : "Loading…")}
                         {d?.token?.symbol ? ` · ${d.token.symbol}` : ""}
                       </p>
                     </Link>
@@ -294,5 +421,48 @@ export default function AssetsPage() {
         )}
       </Panel>
     </>
+  );
+}
+
+function SortHead({
+  label,
+  sortKey,
+  sort,
+  onSort,
+  className,
+}: {
+  label: string;
+  sortKey: AssetSortKey;
+  sort: { key: AssetSortKey; direction: SortDirection };
+  onSort: (key: AssetSortKey) => void;
+  className?: string;
+}) {
+  const active = sort.key === sortKey;
+  return (
+    <TableHead
+      className={className}
+      aria-sort={
+        active
+          ? sort.direction === "asc"
+            ? "ascending"
+            : "descending"
+          : undefined
+      }
+    >
+      <button
+        type="button"
+        onClick={() => onSort(sortKey)}
+        className="inline-flex min-h-8 items-center gap-1 rounded hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      >
+        {label}
+        {active ? (
+          sort.direction === "asc" ? (
+            <ArrowUp className="size-3" aria-hidden />
+          ) : (
+            <ArrowDown className="size-3" aria-hidden />
+          )
+        ) : null}
+      </button>
+    </TableHead>
   );
 }

@@ -1,12 +1,15 @@
 "use client";
 
+import { useEffect } from "react";
 import { toast } from "sonner";
+import { useNow } from "@/app/(investor)/_components/use-now";
 import { ConfirmDialog } from "@/components/app/confirm-dialog";
 import { KeyValueList } from "@/components/app/key-value";
 import { errorMessage } from "@/lib/api/client";
 import { useConfirmPayment } from "@/lib/api/hooks";
 import type { IssuanceOrder } from "@/lib/api/types";
-import { formatMoney, formatNumber } from "@/lib/format";
+import { formatNumber, formatRecordedMoney } from "@/lib/format";
+import { hasPaymentCurrency, reservationDeadlineState } from "@/lib/order-book";
 
 /**
  * Records that the investor's transfer was received. The backend takes no
@@ -26,9 +29,36 @@ export function ConfirmPaymentDialog({
   onConfirmed?: (order: IssuanceOrder) => void;
 }) {
   const confirm = useConfirmPayment();
+  const now = useNow(1000, open);
+  const available =
+    !!order &&
+    order.statusCode === "AWAITING_PAYMENT" &&
+    hasPaymentCurrency(order) &&
+    reservationDeadlineState(order.reservationExpiresAt, now) === "active";
+
+  useEffect(() => {
+    if (open && !available && !confirm.isPending) {
+      onOpenChange(false);
+      toast.error("Payment confirmation unavailable", {
+        description:
+          "The order status, reservation deadline or currency could not be verified.",
+      });
+    }
+  }, [open, available, confirm.isPending, onOpenChange]);
 
   const run = () => {
-    if (!order) return;
+    if (
+      !order ||
+      order.statusCode !== "AWAITING_PAYMENT" ||
+      !hasPaymentCurrency(order) ||
+      reservationDeadlineState(order.reservationExpiresAt) !== "active"
+    ) {
+      onOpenChange(false);
+      toast.error("Payment confirmation unavailable", {
+        description: "Refresh the order before trying again.",
+      });
+      return;
+    }
     confirm.mutate(order.orderRef, {
       onSuccess: (updated) => {
         toast.success("Payment confirmed", {
@@ -46,7 +76,7 @@ export function ConfirmPaymentDialog({
 
   return (
     <ConfirmDialog
-      open={open}
+      open={open && available}
       onOpenChange={onOpenChange}
       title="Confirm payment received"
       description={
@@ -84,7 +114,7 @@ export function ConfirmPaymentDialog({
                 label: "Amount received",
                 value: (
                   <span className="text-base font-semibold">
-                    {formatMoney(order.amountDue, order.currencyCode)}
+                    {formatRecordedMoney(order.amountDue, order.currencyCode)}
                   </span>
                 ),
                 hint: "Must equal the amount due",

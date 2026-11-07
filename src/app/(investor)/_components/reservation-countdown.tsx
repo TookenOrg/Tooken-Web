@@ -22,7 +22,7 @@ export function ReservationCountdown({
   return (
     <div
       className={cn(
-        "flex items-center gap-3 rounded-md border px-4 py-3",
+        "flex flex-wrap items-center gap-3 rounded-md border px-4 py-3",
         elapsed
           ? "border-slate-200 bg-slate-50"
           : urgent
@@ -44,7 +44,7 @@ export function ReservationCountdown({
         )}
         aria-hidden
       />
-      <div className="min-w-0 flex-1">
+      <div className="min-w-32 flex-1">
         <div className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
           {elapsed ? "Reservation elapsed" : "Shares reserved for"}
         </div>

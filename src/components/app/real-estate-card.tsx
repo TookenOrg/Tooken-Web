@@ -2,7 +2,7 @@ import { Building2, MapPin } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
 import type { RealEstate, RealEstateSummary } from "@/lib/api/types";
-import { formatMoney, formatNumber, formatPercent } from "@/lib/format";
+import { formatNumber, formatPercent, formatRecordedMoney } from "@/lib/format";
 import { countryName, estateTypeLabel } from "@/lib/reference";
 import { cn } from "@/lib/utils";
 import { FavoriteButton } from "./favorite-button";
@@ -66,7 +66,7 @@ function Metric({
       </dt>
       <dd
         className={cn(
-          "mt-0.5 truncate text-sm font-semibold text-ink tabular",
+          "mt-0.5 break-words text-sm font-semibold text-ink tabular",
           emphasis && "text-emerald-700",
         )}
       >
@@ -94,7 +94,7 @@ export function RealEstateCard({
 }) {
   const cover = estateCover(estate);
   const cfg = estate.configuration;
-  const currency = cfg?.currency_code || "EUR";
+  const currency = cfg?.currency_code;
   const funded = fundingPercent(estate);
   const location = estateLocation(estate);
   const link = href ?? `/real-estate/${estate.id}`;
@@ -126,7 +126,7 @@ export function RealEstateCard({
                 ? "(min-width: 640px) 256px, 100vw"
                 : "(min-width: 1280px) 400px, (min-width: 640px) 50vw, 100vw"
             }
-            className="object-cover transition duration-500 group-hover:scale-[1.03]"
+            className="object-cover transition duration-500 group-hover:scale-[1.03] motion-reduce:transition-none motion-reduce:group-hover:scale-100"
           />
         ) : (
           <div className="flex size-full items-center justify-center bg-ink">
@@ -169,7 +169,7 @@ export function RealEstateCard({
         >
           <Metric
             label="Per share"
-            value={formatMoney(cfg?.price_per_share, currency)}
+            value={formatRecordedMoney(cfg?.price_per_share, currency)}
           />
           <Metric
             label="Yield"
@@ -180,7 +180,7 @@ export function RealEstateCard({
           />
           <Metric
             label="Valuation"
-            value={formatMoney(cfg?.total_valuation, currency, {
+            value={formatRecordedMoney(cfg?.total_valuation, currency, {
               compact: true,
             })}
           />

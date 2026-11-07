@@ -21,15 +21,52 @@ import {
 import { useIssuers } from "@/lib/api/hooks";
 import { formatDate } from "@/lib/format";
 import { countryName } from "@/lib/reference";
+import { cn } from "@/lib/utils";
+
+const FILTERS = [
+  { id: "all", label: "All" },
+  { id: "active", label: "Active" },
+  { id: "draft", label: "Draft" },
+  { id: "suspended", label: "Suspended" },
+  { id: "dissolved", label: "Dissolved" },
+  { id: "other", label: "Other" },
+] as const;
+type Filter = (typeof FILTERS)[number]["id"];
+
+function matchesStatus(status: string, filter: Filter): boolean {
+  if (filter === "all") return true;
+  if (filter === "other") {
+    return !["active", "draft", "suspended", "dissolved"].includes(status);
+  }
+  return status === filter;
+}
 
 export default function IssuersPage() {
   const router = useRouter();
   const issuers = useIssuers();
   const [query, setQuery] = useState("");
+  const [filter, setFilter] = useState<Filter>("all");
+  const counts = useMemo(() => {
+    const result: Record<Filter, number> = {
+      all: 0,
+      active: 0,
+      draft: 0,
+      suspended: 0,
+      dissolved: 0,
+      other: 0,
+    };
+    for (const issuer of issuers.data ?? []) {
+      for (const option of FILTERS) {
+        if (matchesStatus(issuer.status, option.id)) result[option.id]++;
+      }
+    }
+    return result;
+  }, [issuers.data]);
 
   const rows = useMemo(() => {
     const q = query.trim().toLowerCase();
     return (issuers.data ?? [])
+      .filter((i) => matchesStatus(i.status, filter))
       .filter(
         (i) =>
           !q ||
@@ -38,13 +75,14 @@ export default function IssuersPage() {
             i.legal_form,
             i.registration_number,
             i.lei_code,
+            i.country_code,
             countryName(i.country_code),
           ]
             .filter(Boolean)
             .some((s) => String(s).toLowerCase().includes(q)),
       )
       .sort((a, b) => a.name.localeCompare(b.name));
-  }, [issuers.data, query]);
+  }, [issuers.data, query, filter]);
 
   return (
     <>
@@ -68,12 +106,36 @@ export default function IssuersPage() {
       />
 
       <Panel>
-        <div className="flex flex-col gap-3 border-b border-border px-4 py-3 sm:flex-row sm:items-center sm:justify-between md:px-5">
-          <p className="text-sm text-muted-foreground tabular">
-            {issuers.data
-              ? `${issuers.data.length} issuer${issuers.data.length === 1 ? "" : "s"}`
-              : "\u00a0"}
-          </p>
+        <div className="flex flex-col gap-3 border-b border-border px-4 py-3 lg:flex-row lg:items-center lg:justify-between md:px-5">
+          <fieldset
+            aria-label="Filter issuers by status"
+            className="-mx-1 flex min-w-0 gap-1 overflow-x-auto px-1"
+          >
+            {FILTERS.map((option) => (
+              <button
+                key={option.id}
+                type="button"
+                aria-pressed={filter === option.id}
+                onClick={() => setFilter(option.id)}
+                className={cn(
+                  "inline-flex shrink-0 items-center gap-2 rounded-md px-3 py-1.5 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                  filter === option.id
+                    ? "bg-ink text-white"
+                    : "text-muted-foreground hover:bg-muted hover:text-ink",
+                )}
+              >
+                {option.label}{" "}
+                <span
+                  className={cn(
+                    "rounded px-1.5 text-[11px] tabular",
+                    filter === option.id ? "bg-white/15" : "bg-muted",
+                  )}
+                >
+                  {issuers.isSuccess ? counts[option.id] : "—"}
+                </span>
+              </button>
+            ))}
+          </fieldset>
           <div className="relative sm:w-72">
             <Search
               className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
@@ -81,13 +143,38 @@ export default function IssuersPage() {
             />
             <Input
               type="search"
-              placeholder="Search name, RCS, LEI…"
+              placeholder="Search name, registration, LEI, country…"
               aria-label="Search issuers"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               className="pl-9"
             />
           </div>
+        </div>
+        <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-3 md:px-5">
+          <p
+            className="text-sm text-muted-foreground tabular"
+            aria-live="polite"
+          >
+            {issuers.isSuccess
+              ? filter !== "all" || query.trim()
+                ? `${rows.length} of ${issuers.data?.length ?? 0} issuers`
+                : `${rows.length} issuer${rows.length === 1 ? "" : "s"}`
+              : "Issuer count unavailable"}
+          </p>
+          {(filter !== "all" || query.trim()) && rows.length > 0 ? (
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              onClick={() => {
+                setFilter("all");
+                setQuery("");
+              }}
+            >
+              Reset filters
+            </Button>
+          ) : null}
         </div>
 
         {issuers.isLoading ? (
@@ -102,11 +189,21 @@ export default function IssuersPage() {
             }
             description={
               issuers.data?.length
-                ? "Try another search term."
+                ? "Try another status or search term."
                 : "Register the legal vehicle before creating its assets."
             }
             action={
-              issuers.data?.length ? null : (
+              issuers.data?.length ? (
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setFilter("all");
+                    setQuery("");
+                  }}
+                >
+                  Reset filters
+                </Button>
+              ) : (
                 <Button variant="outline" asChild>
                   <Link href="/admin/issuers/new">
                     <Plus /> New issuer
@@ -140,13 +237,13 @@ export default function IssuersPage() {
                       <TableCell className="pl-5">
                         <Link
                           href={`/admin/issuers/${i.id}`}
-                          className="font-medium text-ink hover:underline"
+                          className="break-words font-medium text-ink hover:underline"
                           onClick={(e) => e.stopPropagation()}
                         >
                           {i.name}
                         </Link>
                         {i.lei_code ? (
-                          <p className="font-mono text-[11px] text-muted-foreground">
+                          <p className="break-all font-mono text-[11px] text-muted-foreground">
                             LEI {i.lei_code}
                           </p>
                         ) : null}
@@ -161,7 +258,7 @@ export default function IssuersPage() {
                         )}
                       </TableCell>
                       <TableCell className="text-right tabular">
-                        {i.real_estate_count ?? 0}
+                        {i.real_estate_count ?? "—"}
                       </TableCell>
                       <TableCell>
                         <IssuerStatusBadge status={i.status} />
@@ -182,19 +279,27 @@ export default function IssuersPage() {
                     className="block space-y-1.5 px-4 py-4 hover:bg-muted/50"
                   >
                     <div className="flex items-start justify-between gap-3">
-                      <p className="font-medium text-ink">{i.name}</p>
+                      <p className="min-w-0 break-words font-medium text-ink">
+                        {i.name}
+                      </p>
                       <IssuerStatusBadge status={i.status} />
                     </div>
-                    <p className="text-xs text-muted-foreground">
+                    <p className="break-words text-xs text-muted-foreground">
                       {i.legal_form} · {countryName(i.country_code)}
                       {i.registration_number
                         ? ` · ${i.registration_number}`
                         : ""}
                     </p>
+                    {i.lei_code ? (
+                      <p className="break-all font-mono text-xs text-muted-foreground">
+                        LEI {i.lei_code}
+                      </p>
+                    ) : null}
                     <p className="text-xs text-muted-foreground tabular">
-                      {i.real_estate_count ?? 0} asset
-                      {i.real_estate_count === 1 ? "" : "s"} · created{" "}
-                      {formatDate(i.created_at)}
+                      {typeof i.real_estate_count !== "number"
+                        ? "Asset count unavailable"
+                        : `${i.real_estate_count} asset${i.real_estate_count === 1 ? "" : "s"}`}{" "}
+                      · created {formatDate(i.created_at)}
                     </p>
                   </Link>
                 </li>

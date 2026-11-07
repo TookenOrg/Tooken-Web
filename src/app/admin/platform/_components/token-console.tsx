@@ -22,6 +22,7 @@ import { contractApi } from "@/lib/api/endpoints";
 import { useRealEstates, useTokenInfos } from "@/lib/api/hooks";
 import type { BurnTokenRequest, CreateTokenRequest } from "@/lib/api/types";
 import { formatNumber } from "@/lib/format";
+import { FieldMessages, fieldDescription } from "./field-messages";
 import { ResultPanel } from "./result-panel";
 
 const ADDRESS = /^0x[0-9a-fA-F]{40}$/;
@@ -41,6 +42,21 @@ export function TokenConsole() {
 
   return (
     <div className="space-y-6">
+      {estates.isError ? (
+        <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
+          <span>
+            Asset catalogue unavailable. You can enter a token address manually.
+          </span>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => void estates.refetch()}
+          >
+            Retry catalogue
+          </Button>
+        </div>
+      ) : null}
       <div className="grid gap-6 xl:grid-cols-2">
         <CreateTokenForm />
         <TokenInspector tokens={tokens} />
@@ -169,7 +185,6 @@ function CreateTokenForm() {
               label="Token name"
               htmlFor="token-name"
               required
-              error={errors.tokenName}
               className="sm:col-span-2"
             >
               <Input
@@ -177,15 +192,16 @@ function CreateTokenForm() {
                 value={form.tokenName}
                 onChange={set("tokenName")}
                 placeholder="e.g. Tooken Harbour Lofts"
+                required
                 aria-invalid={!!errors.tokenName}
+                aria-describedby={fieldDescription(
+                  "token-name",
+                  errors.tokenName,
+                )}
               />
+              <FieldMessages id="token-name" error={errors.tokenName} />
             </FormField>
-            <FormField
-              label="Symbol"
-              htmlFor="token-symbol"
-              required
-              error={errors.symbol}
-            >
+            <FormField label="Symbol" htmlFor="token-symbol" required>
               <Input
                 id="token-symbol"
                 value={form.symbol}
@@ -193,31 +209,32 @@ function CreateTokenForm() {
                 placeholder="TKHL"
                 className="font-mono"
                 maxLength={11}
+                required
                 aria-invalid={!!errors.symbol}
+                aria-describedby={fieldDescription(
+                  "token-symbol",
+                  errors.symbol,
+                )}
               />
+              <FieldMessages id="token-symbol" error={errors.symbol} />
             </FormField>
-            <FormField
-              label="Decimals"
-              htmlFor="token-decimals"
-              required
-              error={errors.nbDecimal}
-            >
+            <FormField label="Decimals" htmlFor="token-decimals" required>
               <Input
                 id="token-decimals"
                 inputMode="numeric"
                 value={form.nbDecimal}
                 onChange={set("nbDecimal")}
                 className="tabular"
+                required
                 aria-invalid={!!errors.nbDecimal}
+                aria-describedby={fieldDescription(
+                  "token-decimals",
+                  errors.nbDecimal,
+                )}
               />
+              <FieldMessages id="token-decimals" error={errors.nbDecimal} />
             </FormField>
-            <FormField
-              label="Total shares"
-              htmlFor="token-total"
-              required
-              error={errors.totalShares}
-              hint="Supply cap enforced on-chain."
-            >
+            <FormField label="Total shares" htmlFor="token-total" required>
               <Input
                 id="token-total"
                 inputMode="numeric"
@@ -225,15 +242,24 @@ function CreateTokenForm() {
                 onChange={set("totalShares")}
                 placeholder="1500"
                 className="tabular"
+                required
                 aria-invalid={!!errors.totalShares}
+                aria-describedby={fieldDescription(
+                  "token-total",
+                  errors.totalShares,
+                  true,
+                )}
+              />
+              <FieldMessages
+                id="token-total"
+                error={errors.totalShares}
+                hint="Supply cap enforced on-chain."
               />
             </FormField>
             <FormField
               label="Max shares per investor"
               htmlFor="token-max"
               required
-              error={errors.maxSharesPerInvestor}
-              hint="Holding limit per identity."
             >
               <Input
                 id="token-max"
@@ -242,7 +268,18 @@ function CreateTokenForm() {
                 onChange={set("maxSharesPerInvestor")}
                 placeholder="50"
                 className="tabular"
+                required
                 aria-invalid={!!errors.maxSharesPerInvestor}
+                aria-describedby={fieldDescription(
+                  "token-max",
+                  errors.maxSharesPerInvestor,
+                  true,
+                )}
+              />
+              <FieldMessages
+                id="token-max"
+                error={errors.maxSharesPerInvestor}
+                hint="Holding limit per identity."
               />
             </FormField>
           </div>
@@ -251,8 +288,9 @@ function CreateTokenForm() {
           </Button>
         </form>
         <ResultPanel
-          data={mutation.isSuccess ? mutation.data : undefined}
+          data={mutation.isSuccess ? (mutation.data ?? null) : undefined}
           error={mutation.error}
+          endpoint="POST /contract/token"
         />
       </PanelBody>
       <ConfirmDialog
@@ -316,11 +354,7 @@ function TokenInspector({ tokens }: { tokens: TokenOption[] }) {
           }}
           noValidate
         >
-          <FormField
-            label="Token contract address"
-            htmlFor="inspect-address"
-            error={error}
-          >
+          <FormField label="Token contract address" htmlFor="inspect-address">
             <Input
               id="inspect-address"
               value={draft}
@@ -328,7 +362,9 @@ function TokenInspector({ tokens }: { tokens: TokenOption[] }) {
               placeholder="0x…"
               className="font-mono text-xs"
               aria-invalid={!!error}
+              aria-describedby={fieldDescription("inspect-address", error)}
             />
+            <FieldMessages id="inspect-address" error={error} />
           </FormField>
           <div className="flex flex-col gap-2 sm:flex-row">
             <Button type="submit" variant="outline">
@@ -345,7 +381,10 @@ function TokenInspector({ tokens }: { tokens: TokenOption[] }) {
           infos.isPending ? (
             <Skeleton className="h-16 w-full" />
           ) : infos.isError ? (
-            <ResultPanel error={infos.error} />
+            <ResultPanel
+              endpoint="GET /contract/token/{tokenAddress}/infos"
+              error={infos.error}
+            />
           ) : (
             <>
               <div className="flex items-center gap-2 text-xs text-muted-foreground">
@@ -354,7 +393,13 @@ function TokenInspector({ tokens }: { tokens: TokenOption[] }) {
               <ResultPanel
                 data={infos.data ?? ""}
                 title="Token information"
-                emptyLabel="On-chain details unavailable: the backend does not expose token information yet."
+                emptyLabel="The backend returned no token details."
+                status={
+                  infos.data
+                    ? "Token information received. Open expert details to inspect it."
+                    : "Token information unavailable: no details were returned."
+                }
+                endpoint="GET /contract/token/{tokenAddress}/infos"
               />
             </>
           )
@@ -390,11 +435,18 @@ function BurnForm({ tokens }: { tokens: TokenOption[] }) {
   const submit = (e: React.FormEvent) => {
     e.preventDefault();
     const amount = form.amount.trim();
+    const numericAmount = Number(amount);
     const next: Partial<Record<keyof typeof form, string>> = {};
     if (!ADDRESS.test(form.token.trim()))
       next.token = "Enter a valid token contract address.";
-    if (!/^\d+(\.\d+)?$/.test(amount) || Number(amount) <= 0)
+    if (
+      !/^\d+(\.\d+)?$/.test(amount) ||
+      !Number.isFinite(numericAmount) ||
+      numericAmount <= 0
+    )
       next.amount = "A positive amount, in tokens.";
+    else if (numericAmount >= 2 ** 53)
+      next.amount = "Amount must be less than 9007199254740992 tokens.";
     else if (significantDigits(amount) > 15)
       next.amount = "At most 15 significant digits.";
     if (!ADDRESS.test(form.to.trim()))
@@ -405,7 +457,7 @@ function BurnForm({ tokens }: { tokens: TokenOption[] }) {
     setTypedError(false);
     setPendingBody({
       tokenContractAddress: form.token.trim(),
-      amount: Number(amount),
+      amount: numericAmount,
       to: form.to.trim(),
     });
   };
@@ -424,12 +476,7 @@ function BurnForm({ tokens }: { tokens: TokenOption[] }) {
       <PanelBody className="space-y-4">
         <form className="space-y-4" onSubmit={submit} noValidate>
           <div className="grid gap-4 md:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
-            <FormField
-              label="Token contract"
-              htmlFor="burn-token"
-              required
-              error={errors.token}
-            >
+            <FormField label="Token contract" htmlFor="burn-token" required>
               <div className="flex flex-col gap-2 sm:flex-row">
                 <Input
                   id="burn-token"
@@ -439,7 +486,12 @@ function BurnForm({ tokens }: { tokens: TokenOption[] }) {
                   }
                   placeholder="0x…"
                   className="font-mono text-xs"
+                  required
                   aria-invalid={!!errors.token}
+                  aria-describedby={fieldDescription(
+                    "burn-token",
+                    errors.token,
+                  )}
                 />
                 <TokenPicker
                   id="burn-pick"
@@ -447,14 +499,9 @@ function BurnForm({ tokens }: { tokens: TokenOption[] }) {
                   onPick={(a) => setForm((f) => ({ ...f, token: a }))}
                 />
               </div>
+              <FieldMessages id="burn-token" error={errors.token} />
             </FormField>
-            <FormField
-              label="Amount"
-              htmlFor="burn-amount"
-              required
-              error={errors.amount}
-              hint="In tokens, not in base units."
-            >
+            <FormField label="Amount" htmlFor="burn-amount" required>
               <Input
                 id="burn-amount"
                 inputMode="decimal"
@@ -464,14 +511,24 @@ function BurnForm({ tokens }: { tokens: TokenOption[] }) {
                 }
                 placeholder="10"
                 className="tabular"
+                required
                 aria-invalid={!!errors.amount}
+                aria-describedby={fieldDescription(
+                  "burn-amount",
+                  errors.amount,
+                  true,
+                )}
+              />
+              <FieldMessages
+                id="burn-amount"
+                error={errors.amount}
+                hint="In tokens, not in base units. The backend checks the token's allowed decimal precision."
               />
             </FormField>
             <FormField
               label="Holder wallet"
               htmlFor="burn-to"
               required
-              error={errors.to}
               className="md:col-span-2"
             >
               <Input
@@ -480,8 +537,11 @@ function BurnForm({ tokens }: { tokens: TokenOption[] }) {
                 onChange={(e) => setForm((f) => ({ ...f, to: e.target.value }))}
                 placeholder="0x…"
                 className="font-mono text-xs"
+                required
                 aria-invalid={!!errors.to}
+                aria-describedby={fieldDescription("burn-to", errors.to)}
               />
+              <FieldMessages id="burn-to" error={errors.to} />
             </FormField>
           </div>
           <Button
@@ -492,15 +552,11 @@ function BurnForm({ tokens }: { tokens: TokenOption[] }) {
             <Flame /> Review burn
           </Button>
         </form>
-        {mutation.isSuccess ? (
-          <p className="text-xs text-muted-foreground">
-            Request accepted (202): the burn transaction is processed in the
-            background.
-          </p>
-        ) : null}
         <ResultPanel
           data={mutation.isSuccess ? (mutation.data ?? null) : undefined}
           error={mutation.error}
+          endpoint="POST /contract/token/burn"
+          status="Request accepted. HTTP 202 does not confirm that the burn succeeded on-chain."
         />
       </PanelBody>
       <ConfirmDialog
@@ -531,15 +587,20 @@ function BurnForm({ tokens }: { tokens: TokenOption[] }) {
           <div className="space-y-3">
             <Alert variant="destructive">
               <Flame />
-              <AlertTitle className="tabular">
-                {formatNumber(pendingBody.amount, 18)} tokens
+              <AlertTitle className="break-all tabular">
+                {String(pendingBody.amount)} tokens
               </AlertTitle>
               <AlertDescription className="space-y-1 text-xs">
-                <span className="flex flex-wrap items-center gap-1.5">
-                  Token <HashValue value={pendingBody.tokenContractAddress} />
+                <span className="block">
+                  Network and environment: unknown. Verify the target
+                  independently before proceeding.
                 </span>
                 <span className="flex flex-wrap items-center gap-1.5">
-                  Holder <HashValue value={pendingBody.to} />
+                  Token{" "}
+                  <HashValue value={pendingBody.tokenContractAddress} full />
+                </span>
+                <span className="flex flex-wrap items-center gap-1.5">
+                  Holder <HashValue value={pendingBody.to} full />
                 </span>
               </AlertDescription>
             </Alert>
@@ -551,11 +612,6 @@ function BurnForm({ tokens }: { tokens: TokenOption[] }) {
                 </>
               }
               htmlFor="burn-confirm"
-              error={
-                (typedError || typed) && typed !== CONFIRM_WORD
-                  ? `Type ${CONFIRM_WORD} in capitals.`
-                  : undefined
-              }
             >
               <Input
                 id="burn-confirm"
@@ -563,6 +619,21 @@ function BurnForm({ tokens }: { tokens: TokenOption[] }) {
                 onChange={(e) => setTyped(e.target.value)}
                 autoComplete="off"
                 className="font-mono"
+                aria-invalid={!!(typedError || typed) && typed !== CONFIRM_WORD}
+                aria-describedby={fieldDescription(
+                  "burn-confirm",
+                  (typedError || typed) && typed !== CONFIRM_WORD
+                    ? `Type ${CONFIRM_WORD} in capitals.`
+                    : undefined,
+                )}
+              />
+              <FieldMessages
+                id="burn-confirm"
+                error={
+                  (typedError || typed) && typed !== CONFIRM_WORD
+                    ? `Type ${CONFIRM_WORD} in capitals.`
+                    : undefined
+                }
               />
             </FormField>
           </div>

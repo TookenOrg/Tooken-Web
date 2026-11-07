@@ -22,16 +22,18 @@ export function HashValue({
   className?: string;
   full?: boolean;
 }) {
-  const [copied, setCopied] = useState(false);
+  const [copyState, setCopyState] = useState<"idle" | "copied" | "failed">(
+    "idle",
+  );
   if (!value) return <span className="text-muted-foreground">—</span>;
 
   const copy = async () => {
     try {
       await navigator.clipboard.writeText(value);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1500);
+      setCopyState("copied");
+      setTimeout(() => setCopyState("idle"), 1500);
     } catch {
-      setCopied(false);
+      setCopyState("failed");
     }
   };
 
@@ -57,15 +59,22 @@ export function HashValue({
       <button
         type="button"
         onClick={copy}
-        className="shrink-0 rounded p-0.5 text-muted-foreground transition hover:bg-muted hover:text-foreground"
+        className="flex size-6 shrink-0 items-center justify-center rounded text-muted-foreground transition hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         aria-label="Copy to clipboard"
       >
-        {copied ? (
+        {copyState === "copied" ? (
           <Check className="size-3.5 text-emerald-600" />
         ) : (
           <Copy className="size-3.5" />
         )}
       </button>
+      <output className="sr-only">
+        {copyState === "copied"
+          ? "Copied to clipboard"
+          : copyState === "failed"
+            ? "Copy failed"
+            : ""}
+      </output>
     </span>
   );
 }

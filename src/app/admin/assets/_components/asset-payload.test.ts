@@ -37,6 +37,7 @@ function gasperich(): AssetFormValues {
       ...v.configuration,
       total_shares: "8000",
       price_per_share: "500",
+      currency_code: "EUR",
       yield: "5.2",
       payment_frequency: "4",
       payment_frequency_type_id: "5",
@@ -165,6 +166,20 @@ describe("assetToFormValues", () => {
     expect(v.configuration.max_investment).toBe("200000");
     expect(v.configuration.exit_fee_rate).toBe("");
   });
+
+  it("does not invent a currency for new or incomplete records", () => {
+    expect(emptyAssetValues().configuration.currency_code).toBe("");
+    const values = assetToFormValues({
+      ...stored,
+      configuration: { total_shares: "100", price_per_share: "10" },
+    });
+    expect(values.configuration.currency_code).toBe("");
+    expect(
+      assetFormSchema
+        .safeParse(values)
+        .error?.issues.map((issue) => issue.path.join(".")),
+    ).toContain("configuration.currency_code");
+  });
 });
 
 describe("buildPatchPayload", () => {
@@ -205,6 +220,21 @@ describe("buildPatchPayload", () => {
     ]);
     expect(patch.imageurl).toBe("https://img.example/c.jpg");
   });
+
+  it("preserves existing non-image media types when the gallery is edited", () => {
+    const initial = assetToFormValues({
+      ...stored,
+      media: [{ url: "https://example.test/tour", media_type: "virtual_tour" }],
+    });
+    const next = structuredClone(initial);
+    next.media[0].alt_text = "Updated description";
+    expect(buildPatchPayload(initial, next).media?.[0]).toMatchObject({
+      url: "https://example.test/tour",
+      media_type: "virtual_tour",
+      alt_text: "Updated description",
+      is_cover: false,
+    });
+  });
 });
 
 describe("assetFormSchema", () => {
@@ -223,6 +253,16 @@ describe("assetFormSchema", () => {
     const v = gasperich();
     v.configuration = emptyAssetValues().configuration;
     expect(assetFormSchema.safeParse(v).success).toBe(true);
+  });
+
+  it("reports the server's description length limit before saving", () => {
+    const v = gasperich();
+    v.description = "x".repeat(2001);
+    const result = assetFormSchema.safeParse(v);
+    expect(result.success).toBe(false);
+    expect(result.error?.issues.map((issue) => issue.path.join("."))).toContain(
+      "description",
+    );
   });
 });
 

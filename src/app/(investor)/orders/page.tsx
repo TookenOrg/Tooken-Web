@@ -23,13 +23,15 @@ import { useOrders, useRealEstates } from "@/lib/api/hooks";
 import type { IssuanceOrder } from "@/lib/api/types";
 import {
   formatDateTime,
-  formatMoney,
   formatNumber,
+  formatRecordedMoney,
   formatRelative,
 } from "@/lib/format";
+import { reservationDeadlineState } from "@/lib/order-book";
 import { type OrderCategory, orderCategory } from "@/lib/portfolio";
 import { isOrderInFlight } from "@/lib/status";
 import { cn } from "@/lib/utils";
+import { useNow } from "../_components/use-now";
 
 type Filter = "all" | OrderCategory;
 
@@ -37,7 +39,7 @@ const FILTERS: { value: Filter; label: string }[] = [
   { value: "all", label: "All" },
   { value: "in_progress", label: "In progress" },
   { value: "settled", label: "Settled" },
-  { value: "other", label: "Other" },
+  { value: "other", label: "Cancelled, refunds & exceptions" },
 ];
 
 export default function OrdersPage() {
@@ -63,6 +65,10 @@ export default function OrdersPage() {
       ),
     [orders.data],
   );
+  const now = useNow(
+    1000,
+    sorted.some((o) => o.statusCode === "AWAITING_PAYMENT"),
+  );
   const counts = useMemo(() => {
     const c: Record<Filter, number> = {
       all: sorted.length,
@@ -78,7 +84,9 @@ export default function OrdersPage() {
   const rows = sorted.filter(
     (o) =>
       (filter === "all" || orderCategory(o.statusCode) === filter) &&
-      (!q || o.orderRef.toLowerCase().includes(q)),
+      (!q ||
+        o.orderRef.toLowerCase().includes(q) ||
+        titleOf(o).toLowerCase().includes(q)),
   );
   const live = sorted.some((o) => isOrderInFlight(o.statusCode));
   const href = (o: IssuanceOrder) =>
@@ -101,7 +109,12 @@ export default function OrdersPage() {
               onClick={() => orders.refetch()}
               disabled={orders.isFetching}
             >
-              <RefreshCw className={cn(orders.isFetching && "animate-spin")} />
+              <RefreshCw
+                className={cn(
+                  orders.isFetching &&
+                    "animate-spin motion-reduce:animate-none",
+                )}
+              />
               Refresh
             </Button>
             <Button
@@ -134,7 +147,7 @@ export default function OrdersPage() {
           <div className="flex items-center gap-3">
             {live ? (
               <span className="hidden items-center gap-1.5 text-xs text-muted-foreground sm:flex">
-                <span className="size-1.5 animate-pulse rounded-full bg-emerald-500" />
+                <span className="size-1.5 animate-pulse rounded-full bg-emerald-500 motion-reduce:animate-none" />
                 Live updates
               </span>
             ) : null}
@@ -147,8 +160,8 @@ export default function OrdersPage() {
                 type="search"
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
-                placeholder="Search by reference"
-                aria-label="Search orders by reference"
+                placeholder="Search reference or offering"
+                aria-label="Search orders by reference or offering"
                 className="h-9 pl-8"
               />
             </div>
@@ -174,7 +187,7 @@ export default function OrdersPage() {
           <EmptyState
             icon={Search}
             title="No matching orders"
-            description="Try another reference or status filter."
+            description="Try another reference, offering or status filter."
             action={
               <Button
                 variant="outline"
@@ -219,20 +232,46 @@ export default function OrdersPage() {
                           {o.orderRef}
                         </Link>
                       </TableCell>
-                      <TableCell className="max-w-56 truncate font-medium text-ink">
+                      <TableCell className="max-w-56 break-words font-medium text-ink">
                         {titleOf(o)}
                       </TableCell>
                       <TableCell className="text-right tabular">
                         {formatNumber(o.tokenQuantity)}
                       </TableCell>
                       <TableCell className="text-right tabular">
-                        {formatMoney(o.unitPrice, o.currencyCode)}
+                        {formatRecordedMoney(o.unitPrice, o.currencyCode)}
                       </TableCell>
                       <TableCell className="text-right font-medium tabular">
-                        {formatMoney(o.amountDue, o.currencyCode)}
+                        {formatRecordedMoney(o.amountDue, o.currencyCode)}
                       </TableCell>
                       <TableCell>
                         <OrderStatusBadge code={o.statusCode} />
+                        {o.statusCode === "AWAITING_PAYMENT" ? (
+                          <div className="mt-1 text-xs text-muted-foreground">
+                            {reservationDeadlineState(
+                              o.reservationExpiresAt,
+                              now,
+                            ) === "active" ? (
+                              <>
+                                Due {formatDateTime(o.reservationExpiresAt)}
+                                <Link
+                                  href={href(o)}
+                                  className="mt-1 block font-medium text-ink underline"
+                                  onClick={(event) => event.stopPropagation()}
+                                >
+                                  Payment details
+                                </Link>
+                              </>
+                            ) : reservationDeadlineState(
+                                o.reservationExpiresAt,
+                                now,
+                              ) === "lapsed" ? (
+                              "Reservation ended"
+                            ) : (
+                              "Deadline unavailable"
+                            )}
+                          </div>
+                        ) : null}
                       </TableCell>
                       <TableCell
                         className="pr-5 text-right text-muted-foreground tabular"
@@ -257,7 +296,7 @@ export default function OrdersPage() {
                         <div className="font-mono text-xs text-muted-foreground">
                           {o.orderRef}
                         </div>
-                        <div className="truncate text-sm font-medium text-ink">
+                        <div className="break-words text-sm font-medium text-ink">
                           {titleOf(o)}
                         </div>
                       </div>
@@ -266,14 +305,29 @@ export default function OrdersPage() {
                     <div className="flex items-end justify-between text-xs text-muted-foreground tabular">
                       <span>
                         {formatNumber(o.tokenQuantity)} ×{" "}
-                        {formatMoney(o.unitPrice, o.currencyCode)}
+                        {formatRecordedMoney(o.unitPrice, o.currencyCode)}
                         <br />
                         {formatRelative(o.createdAt)}
                       </span>
                       <span className="text-sm font-semibold text-ink">
-                        {formatMoney(o.amountDue, o.currencyCode)}
+                        {formatRecordedMoney(o.amountDue, o.currencyCode)}
                       </span>
                     </div>
+                    {o.statusCode === "AWAITING_PAYMENT" ? (
+                      <div className="text-xs text-muted-foreground">
+                        {reservationDeadlineState(
+                          o.reservationExpiresAt,
+                          now,
+                        ) === "active"
+                          ? `Payment details · due ${formatDateTime(o.reservationExpiresAt)}`
+                          : reservationDeadlineState(
+                                o.reservationExpiresAt,
+                                now,
+                              ) === "lapsed"
+                            ? "Reservation ended"
+                            : "Deadline unavailable"}
+                      </div>
+                    ) : null}
                   </Link>
                 </li>
               ))}

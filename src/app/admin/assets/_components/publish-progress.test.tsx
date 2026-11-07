@@ -6,44 +6,34 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-it("spreads estimated deployment progress over a minute", () => {
+it("reports a pending synchronous request without invented progress", () => {
   vi.useFakeTimers();
   render(<PublishProgress />);
-  const progress = screen.getByRole("progressbar", {
-    name: "Deployment progress",
-  });
 
-  expect(screen.getByText(/Checking asset completeness/)).toBeInTheDocument();
+  expect(screen.getByRole("status")).toHaveTextContent(
+    "Publication request in progress",
+  );
+  expect(screen.getByRole("status")).toHaveTextContent(
+    "Publication is not confirmed until the server responds",
+  );
+  expect(screen.queryByRole("progressbar")).not.toBeInTheDocument();
 
-  act(() => vi.advanceTimersByTime(6000));
-  expect(Number(progress.getAttribute("aria-valuenow"))).toBeLessThan(10);
-
-  act(() => vi.advanceTimersByTime(24000));
-  expect(progress).toHaveAttribute("aria-valuenow", "46");
-  expect(
-    screen.getByText(/Deploying ERC-3643 token suite/),
-  ).toBeInTheDocument();
-
-  act(() => vi.advanceTimersByTime(15000));
-  expect(
-    screen.getByText(/Binding the token to the asset/),
-  ).toBeInTheDocument();
-
-  act(() => vi.advanceTimersByTime(15000));
-  expect(progress).toHaveAttribute("aria-valuenow", "92");
+  act(() => vi.advanceTimersByTime(60000));
+  expect(screen.getByRole("status")).toHaveTextContent(
+    "Publication request in progress",
+  );
+  expect(screen.queryByRole("progressbar")).not.toBeInTheDocument();
 });
 
-it("waits below completion when deployment takes longer than a minute", () => {
+it("does not declare completion when the request takes longer than a minute", () => {
   vi.useFakeTimers();
   const { unmount } = render(<PublishProgress />);
 
   act(() => vi.advanceTimersByTime(120000));
-
-  expect(screen.getByRole("progressbar")).toHaveAttribute(
-    "aria-valuenow",
-    "92",
+  expect(screen.getByRole("status")).toHaveTextContent(
+    "Publication is not confirmed until the server responds",
   );
-  expect(screen.getByText(/Estimated progress/)).toBeInTheDocument();
+  expect(screen.queryByRole("progressbar")).not.toBeInTheDocument();
   unmount();
   expect(vi.getTimerCount()).toBe(0);
 });

@@ -6,6 +6,7 @@ import {
   investorDirectory,
   isReservationLapsed,
   orderBucket,
+  reservationDeadlineState,
   sortOrders,
   totalsByCurrency,
 } from "./order-book";
@@ -174,6 +175,15 @@ describe("totalsByCurrency", () => {
     expect(totalsByCurrency([order({ amountDue: "n/a" })])).toEqual([]);
     expect(totalsByCurrency([])).toEqual([]);
   });
+
+  it("does not add amounts whose currencies are unknown", () => {
+    expect(
+      totalsByCurrency([
+        order({ currencyCode: "", amountDue: "5" }),
+        order({ currencyCode: "", amountDue: "10" }),
+      ]),
+    ).toEqual([{ currency: "Currency unavailable", amount: null }]);
+  });
 });
 
 describe("sortOrders", () => {
@@ -203,5 +213,20 @@ describe("isReservationLapsed", () => {
     expect(isReservationLapsed(order({ statusCode: "CLOSED" }), now)).toBe(
       false,
     );
+  });
+});
+
+describe("reservationDeadlineState", () => {
+  const now = Date.parse("2026-11-02T19:20:00Z");
+
+  it("distinguishes an active deadline from an elapsed or unknown one", () => {
+    expect(reservationDeadlineState("2026-11-02T19:20:01Z", now)).toBe(
+      "active",
+    );
+    expect(reservationDeadlineState("2026-11-02T19:20:00Z", now)).toBe(
+      "lapsed",
+    );
+    expect(reservationDeadlineState(undefined, now)).toBe("unknown");
+    expect(reservationDeadlineState("invalid", now)).toBe("unknown");
   });
 });

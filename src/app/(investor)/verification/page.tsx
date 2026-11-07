@@ -1,22 +1,13 @@
 "use client";
 
-import {
-  ArrowRight,
-  Check,
-  Clock,
-  Fingerprint,
-  ShieldCheck,
-  X,
-} from "lucide-react";
+import { Check } from "lucide-react";
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { FormField } from "@/components/app/form-field";
-import { KeyValueList } from "@/components/app/key-value";
 import { PageHeader } from "@/components/app/page-header";
 import { Panel, PanelBody, PanelHeader } from "@/components/app/panel";
-import { PageSkeleton } from "@/components/app/states";
-import { KycStatusBadge } from "@/components/app/status-badges";
+import { EmptyState, ErrorState, PageSkeleton } from "@/components/app/states";
 import { TookenLoader } from "@/components/app/tooken-loader";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -32,11 +23,14 @@ import { ApiError, errorMessage } from "@/lib/api/client";
 import { useSubmitKyc } from "@/lib/api/hooks";
 import type { User } from "@/lib/api/types";
 import { useSession } from "@/lib/auth/session-context";
-import { formatDate, formatDateTime } from "@/lib/format";
-import { COUNTRIES, countryName } from "@/lib/reference";
-import { canInvest, kycStatusMeta } from "@/lib/status";
+import type { RegistryVerdict } from "@/lib/kyc-review";
+import { COUNTRIES } from "@/lib/reference";
+import { kycStatusMeta } from "@/lib/status";
 import { cn } from "@/lib/utils";
-import { OnChainIdentityPanel } from "../_components/onchain-identity";
+import {
+  useInvestorVerification,
+  VerificationSummary,
+} from "./verification-summary";
 
 const CRUMBS = [
   { label: "Dashboard", href: "/dashboard" },
@@ -45,148 +39,286 @@ const CRUMBS = [
 
 type StepState = "done" | "current" | "upcoming" | "failed";
 
-function kycSteps(
-  status: string,
-): { label: string; hint: string; state: StepState }[] {
-  const reached =
-    status === "pending"
-      ? 1
-      : status === "approved"
-        ? 2
-        : status === "verified"
-          ? 4
-          : 0;
-  const labels = [
-    { label: "Submitted", hint: "Declaration received" },
-    { label: "Compliance review", hint: "Checked by our compliance team" },
-    { label: "On-chain identity", hint: "ONCHAINID claim registered" },
-    { label: "Verified", hint: "Eligible to hold security tokens" },
+function kycSteps(status: string, registry: RegistryVerdict) {
+  const filed = status !== "none";
+  const decided = ["approved", "verified", "expired"].includes(status);
+  const failed = status === "rejected" || status === "revoked";
+  const registryState: StepState =
+    registry === "verified" ? "done" : decided ? "current" : "upcoming";
+  return [
+    {
+      label: "Declaration",
+      hint: filed ? "Submitted" : "Not submitted",
+      state: (filed ? "done" : "current") as StepState,
+    },
+    {
+      label: "Compliance decision",
+      hint: failed
+        ? status === "rejected"
+          ? "Rejected"
+          : "Revoked"
+        : decided
+          ? "Decision recorded"
+          : "Awaiting review",
+      state: (failed
+        ? "failed"
+        : decided
+          ? "done"
+          : filed
+            ? "current"
+            : "upcoming") as StepState,
+    },
+    {
+      label: "Registry verdict",
+      hint:
+        registry === "verified"
+          ? "Verified"
+          : registry === "not_verified"
+            ? "Not verified"
+            : registry === "checking"
+              ? "Checking"
+              : "Unavailable",
+      state: registryState,
+    },
   ];
-  return labels.map((l, i) => ({
-    ...l,
-    state: i < reached ? "done" : i === reached ? "current" : "upcoming",
-  }));
 }
 
 export default function VerificationPage() {
-  const { user, userLoading, refreshUser } = useSession();
-  const status = user?.kyc_status ?? "none";
+  const { user, userLoading, isInvestor, isStaff, refreshUser } = useSession();
+  if (userLoading) return <PageSkeleton />;
+  if (!user) {
+    return (
+      <>
+        <PageHeader title="Identity verification" breadcrumbs={CRUMBS} />
+        <Panel>
+          <ErrorState
+            error={new Error("Account details are unavailable.")}
+            onRetry={() => void refreshUser()}
+          />
+        </Panel>
+      </>
+    );
+  }
+  if (!isInvestor) {
+    return (
+      <>
+        <PageHeader title="Identity verification" breadcrumbs={CRUMBS} />
+        <Panel>
+          <EmptyState
+            title={
+              isStaff
+                ? "Verification is for investor accounts"
+                : "Account role unavailable"
+            }
+            description={
+              isStaff
+                ? "Use the back office for staff operations."
+                : "Refresh your account before continuing."
+            }
+            action={
+              isStaff ? (
+                <Button asChild variant="outline">
+                  <Link href="/admin">Back office</Link>
+                </Button>
+              ) : (
+                <Button variant="outline" onClick={() => void refreshUser()}>
+                  Refresh account
+                </Button>
+              )
+            }
+          />
+        </Panel>
+      </>
+    );
+  }
+  return (
+    <VerificationContent key={user.id} user={user} refreshUser={refreshUser} />
+  );
+}
+
+function VerificationContent({
+  user,
+  refreshUser,
+}: {
+  user: User;
+  refreshUser: () => Promise<unknown>;
+}) {
+  const status = user.kyc_status;
   const inProgress = status === "pending" || status === "approved";
+  const verification = useInvestorVerification(user, inProgress);
 
   useEffect(() => {
     if (!inProgress) return;
     const id = window.setInterval(() => {
-      refreshUser();
+      void refreshUser();
     }, 5000);
     return () => window.clearInterval(id);
   }, [inProgress, refreshUser]);
 
-  if (userLoading || !user) return <PageSkeleton />;
-
-  const expiredVerified =
-    status === "verified" && !canInvest(status, user.kyc_expires_at);
-  const canFile =
-    ["none", "rejected", "revoked", "expired"].includes(status) ||
-    expiredVerified;
+  const filingStatus =
+    verification.state.kind === "renewal" ? "expired" : (status ?? "");
+  const filingBlock =
+    verification.state.kind === "conflict"
+      ? "Refresh the conflicting statuses before submitting a declaration."
+      : verification.verdict === "checking"
+        ? "Wait for the registry check before submitting a declaration."
+        : verification.verdict === "unavailable"
+          ? "Retry the registry check before submitting a declaration."
+          : undefined;
+  const knownStatus = [
+    "none",
+    "pending",
+    "approved",
+    "verified",
+    "rejected",
+    "revoked",
+    "expired",
+  ].includes(status ?? "");
 
   return (
     <div>
       <PageHeader
         breadcrumbs={CRUMBS}
         title="Identity verification"
-        description="Security tokens (ERC-3643) can only be held by investors whose identity has been verified and registered on-chain."
-        actions={
-          <KycStatusBadge status={expiredVerified ? "expired" : status} />
-        }
+        description="Review your identity verification and eligibility to subscribe."
       />
-      <div className="grid gap-6 lg:grid-cols-3">
-        <div className="space-y-6 lg:col-span-2">
-          {canFile ? (
-            <KycForm
-              user={user}
-              status={expiredVerified ? "expired" : status}
-            />
-          ) : (
-            <StatusPanel user={user} status={status} />
-          )}
-        </div>
-        <aside className="space-y-6">
-          <OnChainIdentityPanel poll={inProgress} />
+      <div className="space-y-6">
+        <VerificationSummary
+          user={user}
+          verification={verification}
+          refreshUser={refreshUser}
+        />
+        {inProgress ? (
+          <p className="text-xs text-muted-foreground">
+            Account and registry statuses are checked every 5 seconds.
+          </p>
+        ) : null}
+        {verification.state.canFile ? (
+          <KycForm
+            user={user}
+            status={filingStatus}
+            blockedReason={filingBlock}
+            refreshUser={refreshUser}
+          />
+        ) : null}
+        {knownStatus ? (
           <Panel>
-            <PanelHeader title="How verification works" />
+            <PanelHeader title="Verification progress" />
             <PanelBody>
-              <ol className="space-y-4 text-sm">
-                {[
-                  {
-                    t: "Declare your identity",
-                    d: "Full legal name and country of residence.",
-                  },
-                  {
-                    t: "Compliance review",
-                    d: "Our compliance officers review your declaration.",
-                  },
-                  {
-                    t: "On-chain registration",
-                    d: "A KYC claim is attached to your ONCHAINID so the token contract recognises you.",
-                  },
-                  {
-                    t: "Start investing",
-                    d: "Verification is valid for a limited period and must be renewed.",
-                  },
-                ].map((s, i) => (
-                  <li key={s.t} className="flex gap-3">
-                    <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-ink/5 text-xs font-semibold text-ink tabular">
-                      {i + 1}
-                    </span>
-                    <div>
-                      <div className="font-medium text-ink">{s.t}</div>
-                      <div className="text-xs text-muted-foreground">{s.d}</div>
-                    </div>
-                  </li>
-                ))}
+              <ol
+                className="grid gap-4 sm:grid-cols-3"
+                aria-label="Verification progress"
+              >
+                {kycSteps(status as string, verification.verdict).map(
+                  (step, index) => (
+                    <li
+                      key={step.label}
+                      className="flex items-start gap-3"
+                      aria-current={
+                        step.state === "current" ? "step" : undefined
+                      }
+                    >
+                      <span
+                        className={cn(
+                          "flex size-7 shrink-0 items-center justify-center rounded-full border text-xs font-semibold",
+                          step.state === "done" &&
+                            "border-emerald-500 bg-emerald-500 text-white",
+                          step.state === "current" &&
+                            "border-brand bg-amber-50 text-amber-700",
+                          step.state === "upcoming" &&
+                            "border-border text-muted-foreground",
+                          step.state === "failed" &&
+                            "border-red-500 bg-red-50 text-red-700",
+                        )}
+                      >
+                        {step.state === "done" ? (
+                          <Check className="size-3.5" aria-hidden />
+                        ) : (
+                          index + 1
+                        )}
+                      </span>
+                      <div>
+                        <div className="text-sm font-medium text-ink">
+                          {step.label}
+                          <span className="sr-only"> ({step.state})</span>
+                        </div>
+                        <div className="text-xs text-muted-foreground">
+                          {step.hint}
+                        </div>
+                      </div>
+                    </li>
+                  ),
+                )}
               </ol>
             </PanelBody>
           </Panel>
-          <p className="px-1 text-xs text-muted-foreground">
-            Your personal data is processed in accordance with applicable
-            AML/KYC regulations and is only used to establish your eligibility.
+        ) : null}
+        <details className="rounded-md border border-border bg-card p-5 text-sm">
+          <summary className="cursor-pointer font-medium text-ink">
+            How verification works
+          </summary>
+          <p className="mt-3 text-muted-foreground">
+            Declare your legal name and country of residence. After compliance
+            approval, a separate technical registration may be needed before the
+            registry confirms your verification.
           </p>
-        </aside>
+        </details>
       </div>
     </div>
   );
 }
 
-function KycForm({ user, status }: { user: User; status: string }) {
-  const { refreshUser } = useSession();
+function KycForm({
+  user,
+  status,
+  blockedReason,
+  refreshUser,
+}: {
+  user: User;
+  status: string;
+  blockedReason: string | undefined;
+  refreshUser: () => Promise<unknown>;
+}) {
   const submit = useSubmitKyc();
+  const submitting = useRef(false);
   const [fullName, setFullName] = useState(user.full_name ?? "");
   const [country, setCountry] = useState(user.country_code ?? "");
   const [certify, setCertify] = useState(false);
   const [touched, setTouched] = useState(false);
-
+  const validCountry = COUNTRIES.some((item) => item.code === country);
   const nameError =
     touched && fullName.trim().length < 2
       ? "Enter your full legal name."
       : undefined;
   const countryError =
-    touched && !country ? "Select your country of residence." : undefined;
+    touched && !validCountry ? "Select your country of residence." : undefined;
+  const certifyError =
+    touched && !certify ? "Confirm the declaration to continue." : undefined;
 
-  const onSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
+  const onSubmit = (event: React.FormEvent) => {
+    event.preventDefault();
     setTouched(true);
-    if (fullName.trim().length < 2 || !country || !certify) return;
+    if (
+      blockedReason ||
+      submitting.current ||
+      submit.isPending ||
+      fullName.trim().length < 2 ||
+      !validCountry ||
+      !certify
+    )
+      return;
+    submitting.current = true;
     submit.mutate(
-      {
-        declared_full_name: fullName.trim(),
-        declared_country_code: country,
-      },
+      { declared_full_name: fullName.trim(), declared_country_code: country },
       {
         onSuccess: async () => {
           toast.success("Verification submitted", {
-            description: "Our compliance team will review your file shortly.",
+            description: "Your declaration was submitted for review.",
           });
           await refreshUser();
+        },
+        onSettled: () => {
+          submitting.current = false;
         },
       },
     );
@@ -207,81 +339,113 @@ function KycForm({ user, status }: { user: User; status: string }) {
         description="Declare your identity exactly as it appears on your official ID document."
       />
       <PanelBody>
-        {status !== "none" ? (
-          <div
-            className={cn(
-              "mb-5 flex gap-2 rounded-md border px-3 py-2.5 text-sm",
-              meta.tone === "danger"
-                ? "border-red-200 bg-red-50 text-red-800"
-                : "border-amber-200 bg-amber-50 text-amber-900",
-            )}
-          >
-            <X className="mt-0.5 size-4 shrink-0" aria-hidden />
-            <p>
-              {meta.description} You may file a new verification below. Contact
-              support if you need details about the previous decision.
-            </p>
-          </div>
+        {status !== "none" && meta.description ? (
+          <p className="mb-5 text-sm text-muted-foreground">
+            {meta.description} You may submit a new declaration below.
+          </p>
         ) : null}
         <form onSubmit={onSubmit} className="space-y-5" noValidate>
+          <p className="text-sm text-muted-foreground">
+            Complete both fields and confirm the declaration.
+          </p>
           <div className="grid gap-5 sm:grid-cols-2">
-            <FormField
-              label="Full legal name"
-              htmlFor="kyc-name"
-              required
-              error={nameError}
-              hint="First and last names, as on your passport or ID card."
-            >
+            <FormField label="Full legal name" htmlFor="kyc-name" required>
               <Input
                 id="kyc-name"
                 autoComplete="name"
                 value={fullName}
-                onChange={(e) => setFullName(e.target.value)}
+                onChange={(event) => setFullName(event.target.value)}
+                required
                 aria-invalid={!!nameError}
+                aria-describedby={
+                  nameError ? "kyc-name-error" : "kyc-name-hint"
+                }
                 maxLength={200}
               />
+              {nameError ? (
+                <p
+                  id="kyc-name-error"
+                  className="text-xs text-red-600"
+                  role="alert"
+                >
+                  {nameError}
+                </p>
+              ) : (
+                <p id="kyc-name-hint" className="text-xs text-muted-foreground">
+                  First and last names, as on your passport or ID card.
+                </p>
+              )}
             </FormField>
             <FormField
               label="Country of residence"
               htmlFor="kyc-country"
               required
-              error={countryError}
             >
-              <Select value={country} onValueChange={setCountry}>
+              <Select value={country} onValueChange={setCountry} required>
                 <SelectTrigger
                   id="kyc-country"
                   className="w-full"
+                  aria-required="true"
                   aria-invalid={!!countryError}
+                  aria-describedby={
+                    countryError ? "kyc-country-error" : undefined
+                  }
                 >
                   <SelectValue placeholder="Select a country" />
                 </SelectTrigger>
                 <SelectContent>
                   {[...COUNTRIES]
                     .sort((a, b) => a.name.localeCompare(b.name, "en-GB"))
-                    .map((c) => (
-                      <SelectItem key={c.code} value={c.code}>
-                        {c.name}
+                    .map((item) => (
+                      <SelectItem key={item.code} value={item.code}>
+                        {item.name}
                       </SelectItem>
                     ))}
                 </SelectContent>
               </Select>
+              {countryError ? (
+                <p
+                  id="kyc-country-error"
+                  className="text-xs text-red-600"
+                  role="alert"
+                >
+                  {countryError}
+                </p>
+              ) : null}
             </FormField>
           </div>
-          <label
-            htmlFor="kyc-certify"
-            className="flex cursor-pointer gap-3 rounded-md border border-border p-3 text-sm hover:bg-muted/40"
-          >
-            <Checkbox
-              id="kyc-certify"
-              checked={certify}
-              onCheckedChange={(v) => setCertify(v === true)}
-              className="mt-0.5"
-            />
-            <span>
-              I certify that the information provided is accurate and complete,
-              and I consent to its processing for identity verification.
-            </span>
-          </label>
+          <div>
+            <label
+              htmlFor="kyc-certify"
+              className="flex cursor-pointer gap-3 rounded-md border border-border p-3 text-sm hover:bg-muted/40"
+            >
+              <Checkbox
+                id="kyc-certify"
+                checked={certify}
+                onCheckedChange={(value) => setCertify(value === true)}
+                aria-required="true"
+                aria-invalid={!!certifyError}
+                aria-describedby={
+                  certifyError ? "kyc-certify-error" : undefined
+                }
+                className="mt-0.5"
+              />
+              <span>
+                I certify that the information provided is accurate and
+                complete, and I consent to its processing for identity
+                verification.
+              </span>
+            </label>
+            {certifyError ? (
+              <p
+                id="kyc-certify-error"
+                className="mt-1.5 text-xs text-red-600"
+                role="alert"
+              >
+                {certifyError}
+              </p>
+            ) : null}
+          </div>
           {submit.isError ? (
             <div
               role="alert"
@@ -292,10 +456,22 @@ function KycForm({ user, status }: { user: User; status: string }) {
                 : errorMessage(submit.error)}
             </div>
           ) : null}
+          {blockedReason ? (
+            <p className="text-sm text-amber-800" id="kyc-blocked">
+              {blockedReason}
+            </p>
+          ) : submit.isPending ? (
+            <p className="text-sm text-muted-foreground" id="kyc-blocked">
+              Submission in progress.
+            </p>
+          ) : null}
           <div className="flex justify-end">
             <Button
               type="submit"
-              disabled={!certify || submit.isPending}
+              disabled={!!blockedReason || submit.isPending}
+              aria-describedby={
+                blockedReason || submit.isPending ? "kyc-blocked" : undefined
+              }
               className="bg-brand text-brand-foreground hover:bg-brand-light"
             >
               {submit.isPending ? <TookenLoader size={16} /> : null}
@@ -305,132 +481,5 @@ function KycForm({ user, status }: { user: User; status: string }) {
         </form>
       </PanelBody>
     </Panel>
-  );
-}
-
-function StatusPanel({ user, status }: { user: User; status: string }) {
-  const steps = kycSteps(status);
-  const verified = status === "verified";
-  const Icon = verified
-    ? ShieldCheck
-    : status === "approved"
-      ? Fingerprint
-      : Clock;
-  const title = verified
-    ? "Your identity is verified"
-    : status === "approved"
-      ? "Approved, on-chain registration pending"
-      : "Under review";
-  const body = verified
-    ? "You are eligible to subscribe to offerings open on the marketplace."
-    : status === "approved"
-      ? "Compliance has approved your file. Your on-chain identity is being registered; this usually takes a few moments."
-      : "Our compliance team is reviewing your declaration. This page refreshes automatically.";
-
-  return (
-    <>
-      <Panel>
-        <PanelBody className="flex flex-col gap-4 sm:flex-row sm:items-start">
-          <span
-            className={cn(
-              "flex size-11 shrink-0 items-center justify-center rounded-full",
-              verified
-                ? "bg-emerald-50 text-emerald-600"
-                : "bg-cyan-50 text-cyan-700",
-            )}
-          >
-            <Icon className="size-5" aria-hidden />
-          </span>
-          <div className="min-w-0 flex-1">
-            <h2 className="text-lg font-semibold text-ink">{title}</h2>
-            <p className="mt-0.5 text-sm text-muted-foreground">{body}</p>
-            {!verified ? (
-              <p className="mt-2 flex items-center gap-1.5 text-xs text-muted-foreground">
-                <span className="size-1.5 animate-pulse rounded-full bg-cyan-500" />
-                Checking for updates every 5 seconds
-              </p>
-            ) : null}
-          </div>
-          {verified ? (
-            <Button
-              asChild
-              className="bg-brand text-brand-foreground hover:bg-brand-light"
-            >
-              <Link href="/explore">
-                Browse offerings <ArrowRight />
-              </Link>
-            </Button>
-          ) : null}
-        </PanelBody>
-        <div className="border-t border-border px-5 py-5">
-          <ol
-            className="grid gap-4 sm:grid-cols-4"
-            aria-label="Verification progress"
-          >
-            {steps.map((s, i) => (
-              <li
-                key={s.label}
-                className="flex items-start gap-3 sm:flex-col sm:gap-2"
-                aria-current={s.state === "current" ? "step" : undefined}
-              >
-                <span
-                  className={cn(
-                    "relative flex size-7 shrink-0 items-center justify-center rounded-full border text-xs font-semibold tabular",
-                    s.state === "done" &&
-                      "border-emerald-500 bg-emerald-500 text-white",
-                    s.state === "current" &&
-                      "border-brand bg-amber-50 text-amber-700",
-                    s.state === "upcoming" &&
-                      "border-border text-muted-foreground",
-                  )}
-                >
-                  {s.state === "current" ? (
-                    <span className="absolute inset-0 animate-ping rounded-full bg-amber-300/40" />
-                  ) : null}
-                  {s.state === "done" ? <Check className="size-3.5" /> : i + 1}
-                </span>
-                <div>
-                  <div
-                    className={cn(
-                      "text-sm font-medium",
-                      s.state === "upcoming"
-                        ? "text-muted-foreground"
-                        : "text-ink",
-                    )}
-                  >
-                    {s.label}
-                  </div>
-                  <div className="text-xs text-muted-foreground">{s.hint}</div>
-                </div>
-              </li>
-            ))}
-          </ol>
-        </div>
-      </Panel>
-
-      <Panel>
-        <PanelHeader title="Verification record" />
-        <PanelBody>
-          <KeyValueList
-            items={[
-              { label: "Status", value: <KycStatusBadge status={status} /> },
-              { label: "Holder", value: user.full_name },
-              {
-                label: "Country of residence",
-                value: user.country_code ? countryName(user.country_code) : "—",
-              },
-              {
-                label: "Verified on",
-                value: formatDateTime(user.kyc_verified_at),
-              },
-              {
-                label: "Valid until",
-                value: formatDate(user.kyc_expires_at),
-              },
-            ]}
-          />
-        </PanelBody>
-      </Panel>
-    </>
   );
 }
