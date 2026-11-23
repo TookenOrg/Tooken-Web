@@ -27,6 +27,7 @@ vi.mock("@/components/app/favorite-button", () => ({
 describe("LandingPage asset spotlight", () => {
   beforeEach(() => {
     query.data = [];
+    query.isLoading = false;
     query.isError = false;
     session.current = { ready: true, isAuthenticated: false };
     vi.stubGlobal(
@@ -51,6 +52,13 @@ describe("LandingPage asset spotlight", () => {
     expect(
       screen.queryByRole("link", { name: /View featured asset/ }),
     ).not.toBeInTheDocument();
+  });
+
+  it("shows loaders in the hero and below Explore the underlying assets while loading", () => {
+    query.isLoading = true;
+    render(<LandingPage />);
+    expect(screen.getByText("Loading featured offerings…")).toBeInTheDocument();
+    expect(screen.getByText("Loading offerings…")).toBeInTheDocument();
   });
 
   it("features an open subscription before a published offering and links to the real asset", () => {

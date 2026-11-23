@@ -6,8 +6,8 @@ import { PageHeader } from "@/components/app/page-header";
 import { Panel } from "@/components/app/panel";
 import { RealEstateCard } from "@/components/app/real-estate-card";
 import { EmptyState, ErrorState } from "@/components/app/states";
+import { PageLoader } from "@/components/app/tooken-loader";
 import { Button } from "@/components/ui/button";
-import { Skeleton } from "@/components/ui/skeleton";
 import { useSession } from "@/lib/auth/session-context";
 import { useFavorites } from "@/lib/favorites";
 
@@ -42,11 +42,10 @@ export default function FavoritesPage() {
           />
         </Panel>
       ) : userLoading || (user && favorites.isLoading) ? (
-        <div className="grid gap-5 sm:grid-cols-2 xl:grid-cols-3">
-          {["a", "b", "c"].map((k) => (
-            <Skeleton key={k} className="h-80 rounded-lg" />
-          ))}
-        </div>
+        <PageLoader
+          label="Loading watchlist…"
+          className="min-h-72 rounded-sm border border-border bg-card/60"
+        />
       ) : !user ? (
         <Panel>
           <ErrorState

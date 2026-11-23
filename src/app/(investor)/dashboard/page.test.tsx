@@ -6,11 +6,19 @@ import DashboardPage from "./page";
 const state = vi.hoisted(() => ({
   orders: [] as IssuanceOrder[],
   orderError: false,
+  kycStatus: "verified" as string,
+  kycExpiresAt: "2027-01-01T00:00:00Z" as string | null,
+  onChainVerified: true,
 }));
 
 vi.mock("@/lib/auth/session-context", () => ({
   useSession: () => ({
-    user: { full_name: "Test Investor", kyc_status: "verified" },
+    user: {
+      id: 1,
+      full_name: "Test Investor",
+      kyc_status: state.kycStatus,
+      kyc_expires_at: state.kycExpiresAt,
+    },
     isInvestor: true,
     refreshUser: vi.fn(),
   }),
@@ -23,7 +31,9 @@ vi.mock("@/lib/api/hooks", () => ({
     refetch: vi.fn(),
   }),
   useRealEstates: () => ({ data: [] }),
-  useMyKycOnChain: () => ({ data: { is_verified: true } }),
+  useMyKycOnChain: () => ({
+    data: { user_id: 1, is_verified: state.onChainVerified },
+  }),
 }));
 vi.mock("../_components/use-now", () => ({
   useNow: () => Date.parse("2026-01-01T10:00:00Z"),
@@ -49,6 +59,31 @@ const order: IssuanceOrder = {
 beforeEach(() => {
   state.orderError = false;
   state.orders = [];
+  state.kycStatus = "verified";
+  state.kycExpiresAt = "2027-01-01T00:00:00Z";
+  state.onChainVerified = true;
+});
+
+it("hides Next steps when no actions are pending and shows Identity verified cleanly", () => {
+  render(<DashboardPage />);
+  expect(screen.queryByText("Next steps")).not.toBeInTheDocument();
+  expect(screen.getByText("Identity verified")).toBeInTheDocument();
+  expect(
+    screen.getByRole("link", { name: "View verification" }),
+  ).toHaveAttribute("href", "/verification");
+});
+
+it("includes identity verification inside Next steps when KYC is incomplete", () => {
+  state.kycStatus = "none";
+  state.onChainVerified = false;
+  render(<DashboardPage />);
+  expect(screen.getByText("Next steps")).toBeInTheDocument();
+  expect(
+    screen.getByText("Complete or renew your identity verification."),
+  ).toBeInTheDocument();
+  expect(
+    screen.getByRole("link", { name: "View verification" }),
+  ).toHaveAttribute("href", "/verification");
 });
 
 it("shows unpaid and lapsed orders without asking for payment twice", () => {

@@ -1,9 +1,9 @@
 "use client";
 
 import { ArrowDown, ArrowRight, ArrowUpRight } from "lucide-react";
-import Image from "next/image";
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
+import { ImageWithLoader } from "@/components/app/image-with-loader";
 import {
   estateCover,
   estateLocation,
@@ -11,6 +11,7 @@ import {
 } from "@/components/app/real-estate-card";
 import { EmptyState, ErrorState } from "@/components/app/states";
 import { RealEstateStatusBadge } from "@/components/app/status-badges";
+import { PageLoader } from "@/components/app/tooken-loader";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useRealEstates } from "@/lib/api/hooks";
@@ -161,7 +162,12 @@ export default function LandingPage() {
               }}
             >
               <div className="relative aspect-[5/4] overflow-hidden bg-muted lg:aspect-[5/5.3]">
-                {cover && hero ? (
+                {isLoading ? (
+                  <PageLoader
+                    label="Loading featured offerings…"
+                    className="h-full min-h-0 border border-border"
+                  />
+                ) : cover && hero ? (
                   slides.map((estate, index) => (
                     <div
                       key={estate.id}
@@ -173,7 +179,7 @@ export default function LandingPage() {
                           : "pointer-events-none opacity-0",
                       )}
                     >
-                      <Image
+                      <ImageWithLoader
                         src={estateCover(estate) as string}
                         alt={estate.title || "Featured asset"}
                         fill
@@ -184,6 +190,7 @@ export default function LandingPage() {
                         )}
                         priority={index === 0}
                         loading={index > 0 ? "eager" : undefined}
+                        loaderSize={44}
                       />
                     </div>
                   ))
@@ -209,12 +216,12 @@ export default function LandingPage() {
                   </div>
                 )}
                 {cover && hero ? (
-                  <div className="absolute top-4 left-4">
+                  <div className="absolute top-4 left-4 z-10">
                     <RealEstateStatusBadge status={hero.status} />
                   </div>
                 ) : null}
                 {cover ? (
-                  <span className="absolute right-4 bottom-4 bg-background px-2.5 py-1.5 font-mono text-[10px] text-ink">
+                  <span className="absolute right-4 bottom-4 z-10 bg-background px-2.5 py-1.5 font-mono text-[10px] text-ink">
                     ASSET SPOTLIGHT
                   </span>
                 ) : null}
@@ -309,11 +316,10 @@ export default function LandingPage() {
         </div>
         <div className="mt-9">
           {isLoading ? (
-            <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-              {["a", "b", "c"].map((key) => (
-                <Skeleton key={key} className="h-96" />
-              ))}
-            </div>
+            <PageLoader
+              label="Loading offerings…"
+              className="min-h-72 rounded-sm border border-border bg-card/60"
+            />
           ) : isError ? (
             <ErrorState
               error={error}

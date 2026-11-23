@@ -8,13 +8,14 @@ import {
   Coins,
   Layers,
   ReceiptText,
+  ShieldCheck,
   Store,
   Wallet,
 } from "lucide-react";
 import Link from "next/link";
 import { useMemo } from "react";
 import { PageHeader } from "@/components/app/page-header";
-import { Panel, PanelHeader } from "@/components/app/panel";
+import { Panel, PanelBody, PanelHeader } from "@/components/app/panel";
 import { StatCard } from "@/components/app/stat-card";
 import { EmptyState, ErrorState, TableSkeleton } from "@/components/app/states";
 import { OrderStatusBadge } from "@/components/app/status-badges";
@@ -36,9 +37,9 @@ import {
   formatNumber,
   formatRecordedMoney,
 } from "@/lib/format";
+import { investorVerificationState, registryVerdict } from "@/lib/kyc-review";
 import { hasPaymentCurrency, reservationDeadlineState } from "@/lib/order-book";
 import { firstName, summarizePortfolio } from "@/lib/portfolio";
-import { canInvest } from "@/lib/status";
 import { formatAmounts } from "../_components/amounts";
 import { useNow } from "../_components/use-now";
 
@@ -99,6 +100,30 @@ export default function DashboardPage() {
     .size;
   const loading = orders.isLoading;
   const name = firstName(user?.full_name);
+  const verdict = user
+    ? registryVerdict(registry.data, {
+        userId: user.id,
+        loading: registry.isLoading,
+        error: registry.isError,
+      })
+    : "unavailable";
+  const verification = user
+    ? investorVerificationState(
+        {
+          status: user.kyc_status,
+          expiresAt: user.kyc_expires_at,
+          registry: verdict,
+        },
+        now,
+      )
+    : null;
+  const isVerifiedReady = Boolean(
+    isInvestor && !userLoading && verification?.kind === "ready",
+  );
+  const showVerificationStep = isInvestor && !isVerifiedReady;
+  const showOrderSteps =
+    orders.isLoading || orders.isError || actions.length > 0;
+  const showNextSteps = showVerificationStep || showOrderSteps;
 
   return (
     <div className="space-y-6">
@@ -118,114 +143,146 @@ export default function DashboardPage() {
         }
       />
 
-      <Panel>
-        <PanelHeader
-          title="Next steps"
-          description="Actions and updates requiring your attention."
-        />
-        <div className="space-y-3 px-5 pb-5">
-          {isInvestor && userLoading ? (
-            <p className="text-sm text-muted-foreground">
-              Checking verification…
-            </p>
-          ) : isInvestor && !user ? (
-            <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
-              <span>Account verification status is unavailable.</span>
-              <Button variant="outline" size="sm" onClick={() => refreshUser()}>
-                Retry
-              </Button>
-            </div>
-          ) : isInvestor && user ? (
-            <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
-              <span>
-                {!user.kyc_status
-                  ? "Verification status is unavailable."
-                  : !canInvest(user.kyc_status, user.kyc_expires_at)
-                    ? user.kyc_status === "pending" ||
-                      user.kyc_status === "approved"
-                      ? "Verification is in progress."
-                      : "Complete or renew your identity verification."
-                    : registry.isLoading
-                      ? "Checking verification status…"
-                      : registry.isError || !registry.data
-                        ? "Verification status is unavailable."
-                        : registry.data.is_verified
-                          ? `Identity verified${user.kyc_expires_at ? ` · valid until ${formatDate(user.kyc_expires_at)}` : ""}.`
-                          : "Your registry status requires attention."}
+      {isVerifiedReady && user ? (
+        <Panel>
+          <PanelBody className="flex flex-wrap items-center justify-between gap-3 py-4">
+            <div className="flex min-w-0 items-center gap-3">
+              <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-emerald-50 text-emerald-700">
+                <ShieldCheck className="size-4" aria-hidden />
               </span>
-              <Button asChild variant="outline" size="sm">
-                <Link href="/verification">View verification</Link>
-              </Button>
+              <div className="min-w-0">
+                <p className="text-sm font-medium text-ink">
+                  Identity verified
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  {user.kyc_expires_at
+                    ? `Eligible to subscribe · valid until ${formatDate(user.kyc_expires_at)}`
+                    : "Eligible to subscribe to offerings."}
+                </p>
+              </div>
             </div>
-          ) : null}
+            <Button asChild variant="outline" size="sm" className="shrink-0">
+              <Link href="/verification">View verification</Link>
+            </Button>
+          </PanelBody>
+        </Panel>
+      ) : null}
 
-          {orders.isError ? (
-            <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
-              <span>Order actions are unavailable.</span>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => orders.refetch()}
-              >
-                Retry
-              </Button>
-            </div>
-          ) : orders.isLoading ? (
-            <p className="text-sm text-muted-foreground">Checking orders…</p>
-          ) : actions.length ? (
-            <ul className="divide-y divide-border border-t border-border">
-              {actions.map((order) => {
-                const deadline = reservationDeadlineState(
-                  order.reservationExpiresAt,
-                  now,
-                );
-                const awaiting = order.statusCode === "AWAITING_PAYMENT";
-                return (
-                  <li key={order.orderRef}>
-                    <Link
-                      href={`/orders/${encodeURIComponent(order.orderRef)}`}
-                      className="flex flex-wrap items-center justify-between gap-2 py-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                    >
-                      <span>
-                        <span className="block font-medium text-ink">
-                          {awaiting && deadline === "active"
-                            ? hasPaymentCurrency(order)
-                              ? `Payment required · ${formatRecordedMoney(order.amountDue, order.currencyCode)}`
-                              : "Payment currency unavailable"
-                            : awaiting && deadline === "lapsed"
-                              ? "Reservation ended"
-                              : awaiting
-                                ? "Reservation deadline unavailable"
-                                : "Order requires attention"}
-                        </span>
-                        <span className="block break-words text-xs text-muted-foreground">
-                          {order.realEstateTitle ??
-                            titles[order.realEstateId] ??
-                            order.orderRef}
-                          {awaiting && deadline === "active"
-                            ? ` · due ${formatDateTime(order.reservationExpiresAt)}`
-                            : awaiting && deadline === "lapsed"
-                              ? " · awaiting the order status update"
-                              : ""}
-                        </span>
-                      </span>
-                      <span className="text-xs font-medium text-ink">
-                        View order →
-                      </span>
-                    </Link>
-                  </li>
-                );
-              })}
-            </ul>
-          ) : (
-            <p className="text-sm text-muted-foreground">
-              No order action is currently required.
-            </p>
-          )}
-        </div>
-      </Panel>
+      {showNextSteps ? (
+        <Panel>
+          <PanelHeader
+            title="Next steps"
+            description="Actions and updates requiring your attention."
+          />
+          <div className="divide-y divide-border px-5">
+            {showVerificationStep ? (
+              userLoading ? (
+                <p className="py-4 text-sm text-muted-foreground">
+                  Checking verification…
+                </p>
+              ) : !user ? (
+                <div className="flex flex-wrap items-center justify-between gap-3 py-4 text-sm">
+                  <span>Account verification status is unavailable.</span>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => refreshUser()}
+                  >
+                    Retry
+                  </Button>
+                </div>
+              ) : (
+                <div className="flex flex-wrap items-center justify-between gap-3 py-4 text-sm">
+                  <span>
+                    {verification?.kind === "under_review" ||
+                    verification?.kind === "registration_pending"
+                      ? "Verification is in progress."
+                      : verification?.kind === "checking"
+                        ? "Checking verification status…"
+                        : verification?.kind === "conflict"
+                          ? "Your registry status requires attention."
+                          : verification?.kind === "unavailable"
+                            ? "Verification status is unavailable."
+                            : "Complete or renew your identity verification."}
+                  </span>
+                  <Button
+                    asChild
+                    variant="outline"
+                    size="sm"
+                    className="shrink-0"
+                  >
+                    <Link href="/verification">View verification</Link>
+                  </Button>
+                </div>
+              )
+            ) : null}
 
-      <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
+            {orders.isError ? (
+              <div className="flex flex-wrap items-center justify-between gap-3 py-4 text-sm">
+                <span>Order actions are unavailable.</span>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => orders.refetch()}
+                >
+                  Retry
+                </Button>
+              </div>
+            ) : orders.isLoading ? (
+              <p className="py-4 text-sm text-muted-foreground">
+                Checking orders…
+              </p>
+            ) : actions.length ? (
+              <ul className="divide-y divide-border">
+                {actions.map((order) => {
+                  const deadline = reservationDeadlineState(
+                    order.reservationExpiresAt,
+                    now,
+                  );
+                  const awaiting = order.statusCode === "AWAITING_PAYMENT";
+                  return (
+                    <li key={order.orderRef}>
+                      <Link
+                        href={`/orders/${encodeURIComponent(order.orderRef)}`}
+                        className="flex flex-wrap items-center justify-between gap-3 py-4 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                      >
+                        <span>
+                          <span className="block font-medium text-ink">
+                            {awaiting && deadline === "active"
+                              ? hasPaymentCurrency(order)
+                                ? `Payment required · ${formatRecordedMoney(order.amountDue, order.currencyCode)}`
+                                : "Payment currency unavailable"
+                              : awaiting && deadline === "lapsed"
+                                ? "Reservation ended"
+                                : awaiting
+                                  ? "Reservation deadline unavailable"
+                                  : "Order requires attention"}
+                          </span>
+                          <span className="block break-words text-xs text-muted-foreground">
+                            {order.realEstateTitle ??
+                              titles[order.realEstateId] ??
+                              order.orderRef}
+                            {awaiting && deadline === "active"
+                              ? ` · due ${formatDateTime(order.reservationExpiresAt)}`
+                              : awaiting && deadline === "lapsed"
+                                ? " · awaiting the order status update"
+                                : ""}
+                          </span>
+                        </span>
+                        <span className="shrink-0 text-xs font-medium text-ink">
+                          View order →
+                        </span>
+                      </Link>
+                    </li>
+                  );
+                })}
+              </ul>
+            ) : null}
+          </div>
+        </Panel>
+      ) : null}
+
+      <div className="grid grid-cols-1 gap-3 min-[340px]:grid-cols-2 xl:grid-cols-4">
         <StatCard
           label="Invested capital"
           icon={Wallet}

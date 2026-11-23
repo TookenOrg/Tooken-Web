@@ -105,6 +105,36 @@ export function formatRelative(
   return rtf.format(Math.round(diff / 86400), "day");
 }
 
+export const SEPOLIA_EXPLORER_BASE = "https://sepolia.etherscan.io";
+
+export type ExplorerKind = "address" | "tx" | "none";
+
+/** Resolves a Sepolia Etherscan URL for 0x Ethereum addresses and transaction hashes. */
+export function sepoliaExplorerUrl(
+  value: string | null | undefined,
+  kind?: ExplorerKind,
+): string | null {
+  if (!value || kind === "none") return null;
+  const trimmed = value.trim();
+  if (kind === "address") {
+    return /^0x[0-9a-fA-F]{40}$/.test(trimmed)
+      ? `${SEPOLIA_EXPLORER_BASE}/address/${trimmed}`
+      : null;
+  }
+  if (kind === "tx") {
+    return /^0x[0-9a-fA-F]{64}$/.test(trimmed)
+      ? `${SEPOLIA_EXPLORER_BASE}/tx/${trimmed}`
+      : null;
+  }
+  if (/^0x[0-9a-fA-F]{40}$/.test(trimmed)) {
+    return `${SEPOLIA_EXPLORER_BASE}/address/${trimmed}`;
+  }
+  if (/^0x[0-9a-fA-F]{64}$/.test(trimmed)) {
+    return `${SEPOLIA_EXPLORER_BASE}/tx/${trimmed}`;
+  }
+  return null;
+}
+
 export function shortenHash(
   value: string | null | undefined,
   size = 6,

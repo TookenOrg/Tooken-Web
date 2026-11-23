@@ -3,6 +3,7 @@
 import {
   ArrowLeft,
   ArrowUpRight,
+  Building2,
   CircleAlert,
   FileQuestion,
   RefreshCw,
@@ -10,14 +11,17 @@ import {
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { HashValue } from "@/components/app/hash-value";
+import { ImageWithLoader } from "@/components/app/image-with-loader";
 import { KeyValueList } from "@/components/app/key-value";
 import { PageHeader } from "@/components/app/page-header";
 import { Panel, PanelBody, PanelHeader } from "@/components/app/panel";
+import { estateCover } from "@/components/app/real-estate-card";
 import { EmptyState, ErrorState, PageSkeleton } from "@/components/app/states";
 import {
   OrderStatusBadge,
   RealEstateStatusBadge,
 } from "@/components/app/status-badges";
+import { TookenLoader } from "@/components/app/tooken-loader";
 import { Button } from "@/components/ui/button";
 import { ApiError } from "@/lib/api/client";
 import { useOrder, useRealEstate } from "@/lib/api/hooks";
@@ -87,6 +91,7 @@ export default function OrderDetailPage() {
     estate.data?.title ??
     order.realEstateTitle ??
     `Offering #${order.realEstateId}`;
+  const cover = estate.data ? estateCover(estate.data) : undefined;
   const tokenAddress =
     estate.data?.token?.address ?? estate.data?.contract_address;
   const cur = order.currencyCode;
@@ -265,8 +270,38 @@ export default function OrderDetailPage() {
               </PanelBody>
             </Panel>
 
-            <Panel>
+            <Panel className="overflow-hidden">
               <PanelHeader title="Offering" />
+              <Link
+                href={`/real-estate/${order.realEstateId}`}
+                className="group relative block aspect-[16/10] overflow-hidden border-b border-border bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+                aria-label={`View ${title}`}
+              >
+                {estate.isLoading ? (
+                  <span
+                    aria-hidden
+                    className="flex size-full items-center justify-center"
+                  >
+                    <TookenLoader size={32} />
+                  </span>
+                ) : cover ? (
+                  <ImageWithLoader
+                    src={cover}
+                    alt={title}
+                    fill
+                    sizes="(min-width: 1024px) 380px, 100vw"
+                    className="object-cover transition duration-500 group-hover:scale-[1.02] motion-reduce:transition-none"
+                    loaderSize={32}
+                  />
+                ) : (
+                  <span
+                    aria-hidden
+                    className="flex size-full items-center justify-center bg-ink"
+                  >
+                    <Building2 className="size-9 text-white/25" />
+                  </span>
+                )}
+              </Link>
               <PanelBody className="space-y-4">
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">

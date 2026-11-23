@@ -16,6 +16,7 @@ import { useState } from "react";
 import { toast } from "sonner";
 import { ConfirmDialog } from "@/components/app/confirm-dialog";
 import { HashValue } from "@/components/app/hash-value";
+import { ImageWithLoader } from "@/components/app/image-with-loader";
 import { KeyValueList } from "@/components/app/key-value";
 import { PageHeader } from "@/components/app/page-header";
 import { Panel, PanelBody, PanelHeader } from "@/components/app/panel";
@@ -493,12 +494,21 @@ function OverviewTab({ asset: re }: { asset: RealEstate }) {
                         href={m.url}
                         target="_blank"
                         rel="noreferrer"
-                        className="relative block aspect-[4/3] overflow-hidden rounded-md bg-muted bg-cover bg-center ring-1 ring-border transition hover:opacity-90"
-                        style={{ backgroundImage: `url("${m.url}")` }}
+                        className="relative block aspect-[4/3] overflow-hidden rounded-md bg-muted ring-1 ring-border transition hover:opacity-90"
                         aria-label={m.alt_text || "Open image"}
                       >
+                        {m.url ? (
+                          <ImageWithLoader
+                            src={m.url}
+                            alt={m.alt_text || re.title || "Asset image"}
+                            fill
+                            sizes="(min-width: 768px) 220px, 50vw"
+                            loaderSize={24}
+                            className="object-cover"
+                          />
+                        ) : null}
                         {m.is_cover ? (
-                          <span className="absolute left-2 top-2 rounded bg-ink/85 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wider text-white">
+                          <span className="absolute left-2 top-2 z-10 rounded bg-ink/85 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wider text-white">
                             Cover
                           </span>
                         ) : null}

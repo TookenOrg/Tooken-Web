@@ -17,12 +17,20 @@ function isEmpty(value: unknown): boolean {
   );
 }
 
-function Value({ value }: { value: unknown }) {
+function Value({ value, fieldKey }: { value: unknown; fieldKey?: string }) {
   if (value === null || value === undefined || value === "") {
     return <span className="text-muted-foreground">—</span>;
   }
   if (typeof value === "string" && HEX.test(value)) {
-    return <HashValue value={value} full />;
+    const nonNavigableBytes32 =
+      value.length === 66 && fieldKey && /salt|role|topic/i.test(fieldKey);
+    return (
+      <HashValue
+        value={value}
+        full
+        explorerKind={nonNavigableBytes32 ? "none" : undefined}
+      />
+    );
   }
   if (typeof value === "string" && /^https?:\/\//.test(value)) {
     return (
@@ -42,7 +50,7 @@ function Value({ value }: { value: unknown }) {
         {value.map((v, i) => (
           // biome-ignore lint/suspicious/noArrayIndexKey: response items have no identity
           <div key={i} className="rounded border border-border/70 p-2">
-            <Value value={v} />
+            <Value value={v} fieldKey={fieldKey} />
           </div>
         ))}
       </div>
@@ -58,7 +66,7 @@ function Value({ value }: { value: unknown }) {
           >
             <dt className="text-muted-foreground">{humanize(k)}</dt>
             <dd className="min-w-0 break-all text-ink">
-              <Value value={v} />
+              <Value value={v} fieldKey={k} />
             </dd>
           </div>
         ))}

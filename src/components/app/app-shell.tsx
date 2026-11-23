@@ -120,7 +120,12 @@ function SidebarContent({
   return (
     <div className="flex h-full flex-col border-r border-sidebar-border bg-sidebar">
       <div className="flex h-20 shrink-0 items-center border-b border-sidebar-border px-6">
-        <Brand href={homeHref} suffix={brandSuffix} tone="dark" />
+        <Brand
+          href={homeHref}
+          suffix={brandSuffix}
+          tone="dark"
+          markVariant="white"
+        />
       </div>
       <SidebarNav sections={sections} onNavigate={onNavigate} />
       <AccountSummary tone="light" className="border-sidebar-border" />

@@ -12,6 +12,7 @@ import {
 import { useMemo, useState } from "react";
 import { RealEstateCard } from "@/components/app/real-estate-card";
 import { EmptyState, ErrorState } from "@/components/app/states";
+import { PageLoader } from "@/components/app/tooken-loader";
 import { Button } from "@/components/ui/button";
 import { DualRangeSlider } from "@/components/ui/dual-range-slider";
 import { Input } from "@/components/ui/input";
@@ -27,7 +28,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Skeleton } from "@/components/ui/skeleton";
 import { realEstateApi } from "@/lib/api/endpoints";
 import { queryKeys, useRealEstates } from "@/lib/api/hooks";
 import type { RealEstateSummary } from "@/lib/api/types";
@@ -136,24 +136,6 @@ function sortEstates(
     }
     return order || a.id - b.id;
   });
-}
-
-function CardSkeleton() {
-  return (
-    <div className="overflow-hidden rounded-lg border border-border bg-card">
-      <Skeleton className="aspect-[16/10] rounded-none" />
-      <div className="space-y-3 p-5">
-        <Skeleton className="h-3 w-24" />
-        <Skeleton className="h-5 w-3/4" />
-        <Skeleton className="h-4 w-1/2" />
-        <div className="grid grid-cols-3 gap-3 border-t border-border pt-4">
-          <Skeleton className="h-8" />
-          <Skeleton className="h-8" />
-          <Skeleton className="h-8" />
-        </div>
-      </div>
-    </div>
-  );
 }
 
 export default function ExplorePage() {
@@ -522,11 +504,10 @@ export default function ExplorePage() {
 
         <div className="mt-4">
           {isLoading || (orderingDates && !isError) ? (
-            <div className="grid gap-5 sm:grid-cols-2 xl:grid-cols-3">
-              {["a", "b", "c"].map((k) => (
-                <CardSkeleton key={k} />
-              ))}
-            </div>
+            <PageLoader
+              label="Preparing offerings…"
+              className="min-h-80 rounded-sm border border-border bg-card/60"
+            />
           ) : isError ? (
             <div className="rounded-lg border border-border bg-card">
               <ErrorState

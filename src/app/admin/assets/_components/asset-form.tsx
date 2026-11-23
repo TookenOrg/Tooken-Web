@@ -1360,22 +1360,42 @@ function ImagePreview({
   label: string;
   cover: boolean;
 }) {
-  const [failed, setFailed] = useState(false);
+  const [loadedUrl, setLoadedUrl] = useState<string | null>(null);
+  const [failedUrl, setFailedUrl] = useState<string | null>(null);
+  const failed = Boolean(url) && failedUrl === url;
+  const loaded = Boolean(url) && loadedUrl === url;
+
   return (
     <div className="relative w-full shrink-0 sm:w-36">
       <div className="relative aspect-[3/2] overflow-hidden rounded bg-muted">
         {url && !failed ? (
-          // A remote URL is supplied by the operator; no upload or storage is involved.
-          // biome-ignore lint/performance/noImgElement: this is a preview of an arbitrary external URL.
-          <img
-            src={url}
-            alt={label}
-            className="size-full object-cover"
-            onError={() => setFailed(true)}
-          />
+          <>
+            {!loaded ? (
+              <span
+                aria-hidden
+                className="pointer-events-none absolute inset-0 z-[1] flex items-center justify-center bg-muted"
+              >
+                <TookenLoader size={20} />
+              </span>
+            ) : null}
+            {/* A remote URL is supplied by the operator; no upload or storage is involved. */}
+            {/* biome-ignore lint/performance/noImgElement: this is a preview of an arbitrary external URL. */}
+            <img
+              ref={(node) => {
+                if (url && node?.complete && node.naturalWidth > 0) {
+                  setLoadedUrl(url);
+                }
+              }}
+              src={url}
+              alt={label}
+              className="size-full object-cover"
+              onLoad={() => setLoadedUrl(url)}
+              onError={() => setFailedUrl(url)}
+            />
+          </>
         ) : null}
         {cover ? (
-          <span className="absolute left-1.5 top-1.5 rounded bg-ink/85 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wider text-white">
+          <span className="absolute left-1.5 top-1.5 z-10 rounded bg-ink/85 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wider text-white">
             Cover
           </span>
         ) : null}

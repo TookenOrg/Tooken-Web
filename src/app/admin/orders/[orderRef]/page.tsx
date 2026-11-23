@@ -3,6 +3,7 @@
 import {
   ArrowLeft,
   Banknote,
+  Building2,
   CheckCircle2,
   Clock,
   ShieldAlert,
@@ -12,9 +13,11 @@ import { useParams } from "next/navigation";
 import { useState } from "react";
 import { useNow } from "@/app/(investor)/_components/use-now";
 import { HashValue } from "@/components/app/hash-value";
+import { ImageWithLoader } from "@/components/app/image-with-loader";
 import { KeyValueList } from "@/components/app/key-value";
 import { PageHeader } from "@/components/app/page-header";
 import { Panel, PanelBody, PanelHeader } from "@/components/app/panel";
+import { estateCover } from "@/components/app/real-estate-card";
 import { EmptyState, ErrorState, PageSkeleton } from "@/components/app/states";
 import {
   KycFileStatusBadge,
@@ -474,8 +477,42 @@ function OrderDetail({ order }: { order: IssuanceOrder }) {
               </PanelBody>
             </Panel>
 
-            <Panel>
+            <Panel className="overflow-hidden">
               <PanelHeader title="Offering" />
+              <Link
+                href={`/admin/assets/${order.realEstateId}`}
+                className="group relative block aspect-[16/10] overflow-hidden border-b border-border bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+                aria-label={`View ${estate.data?.title ?? order.realEstateTitle ?? `offering #${order.realEstateId}`}`}
+              >
+                {estate.isLoading ? (
+                  <span
+                    aria-hidden
+                    className="flex size-full items-center justify-center"
+                  >
+                    <TookenLoader size={32} />
+                  </span>
+                ) : estate.data && estateCover(estate.data) ? (
+                  <ImageWithLoader
+                    src={estateCover(estate.data) as string}
+                    alt={
+                      estate.data.title ??
+                      order.realEstateTitle ??
+                      `Offering #${order.realEstateId}`
+                    }
+                    fill
+                    sizes="(min-width: 1024px) 380px, 100vw"
+                    className="object-cover transition duration-500 group-hover:scale-[1.02] motion-reduce:transition-none"
+                    loaderSize={32}
+                  />
+                ) : (
+                  <span
+                    aria-hidden
+                    className="flex size-full items-center justify-center bg-ink"
+                  >
+                    <Building2 className="size-9 text-white/25" />
+                  </span>
+                )}
+              </Link>
               <PanelBody className="py-2">
                 <KeyValueList
                   items={[

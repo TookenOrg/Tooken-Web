@@ -10,10 +10,10 @@ import {
   Plus,
   ShieldAlert,
 } from "lucide-react";
-import Image from "next/image";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { ImageWithLoader } from "@/components/app/image-with-loader";
 import { KeyValueList } from "@/components/app/key-value";
 import { PageHeader } from "@/components/app/page-header";
 import { Panel, PanelBody, PanelHeader } from "@/components/app/panel";
@@ -1323,9 +1323,11 @@ function OfferingSummary({
   const funded = fundingPercent(estate);
   return (
     <Panel className="overflow-hidden">
-      <div className="relative aspect-[16/9] bg-ink">
+      <div
+        className={cn("relative aspect-[16/9]", cover ? "bg-muted" : "bg-ink")}
+      >
         {cover ? (
-          <Image
+          <ImageWithLoader
             src={cover}
             alt=""
             fill

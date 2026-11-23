@@ -7,25 +7,34 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { shortenHash } from "@/lib/format";
+import {
+  type ExplorerKind,
+  sepoliaExplorerUrl,
+  shortenHash,
+} from "@/lib/format";
 import { cn } from "@/lib/utils";
 
-/** Shortened address or transaction hash with a copy button. */
+/** Shortened address or transaction hash with a Sepolia link and copy button. */
 export function HashValue({
   value,
   size = 6,
   className,
   full,
+  explorerKind,
 }: {
   value: string | null | undefined;
   size?: number;
   className?: string;
   full?: boolean;
+  explorerKind?: ExplorerKind;
 }) {
   const [copyState, setCopyState] = useState<"idle" | "copied" | "failed">(
     "idle",
   );
   if (!value) return <span className="text-muted-foreground">—</span>;
+
+  const explorerUrl = sepoliaExplorerUrl(value, explorerKind);
+  const display = full ? value : shortenHash(value, size);
 
   const copy = async () => {
     try {
@@ -46,14 +55,28 @@ export function HashValue({
     >
       <Tooltip>
         <TooltipTrigger asChild>
-          <span
-            className={cn("truncate", full && "break-all whitespace-normal")}
-          >
-            {full ? value : shortenHash(value, size)}
-          </span>
+          {explorerUrl ? (
+            <a
+              href={explorerUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className={cn(
+                "truncate rounded-xs underline decoration-border underline-offset-4 transition-colors hover:text-ink hover:decoration-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                full && "break-all whitespace-normal",
+              )}
+            >
+              {display}
+            </a>
+          ) : (
+            <span
+              className={cn("truncate", full && "break-all whitespace-normal")}
+            >
+              {display}
+            </span>
+          )}
         </TooltipTrigger>
         <TooltipContent className="max-w-none font-mono text-xs">
-          {value}
+          {explorerUrl ? `${value} · View on Sepolia` : value}
         </TooltipContent>
       </Tooltip>
       <button

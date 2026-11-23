@@ -14,12 +14,12 @@ import {
   ShieldAlert,
   ShieldCheck,
 } from "lucide-react";
-import Image from "next/image";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useState } from "react";
 import { FavoriteButton } from "@/components/app/favorite-button";
 import { HashValue } from "@/components/app/hash-value";
+import { ImageWithLoader } from "@/components/app/image-with-loader";
 import { KeyValueList } from "@/components/app/key-value";
 import { Panel, PanelBody, PanelHeader } from "@/components/app/panel";
 import {
@@ -32,6 +32,7 @@ import {
   KycStatusBadge,
   RealEstateStatusBadge,
 } from "@/components/app/status-badges";
+import { PageLoader } from "@/components/app/tooken-loader";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ApiError } from "@/lib/api/client";
@@ -83,8 +84,8 @@ function Gallery({ estate }: { estate: RealEstate }) {
 
   return (
     <div className="space-y-2">
-      <div className="relative aspect-[16/9] overflow-hidden rounded-sm bg-ink">
-        <Image
+      <div className="relative aspect-[16/9] overflow-hidden rounded-sm bg-muted">
+        <ImageWithLoader
           key={current.url}
           src={current.url}
           alt={current.alt_text || estate.title || "Property photo"}
@@ -92,6 +93,7 @@ function Gallery({ estate }: { estate: RealEstate }) {
           priority
           sizes="(min-width: 1024px) 800px, 100vw"
           className="object-cover"
+          loaderSize={40}
         />
         {items.length > 1 ? (
           <>
@@ -100,7 +102,7 @@ function Gallery({ estate }: { estate: RealEstate }) {
               onClick={() =>
                 setIndex((i) => (i - 1 + items.length) % items.length)
               }
-              className="absolute top-1/2 left-3 flex size-9 -translate-y-1/2 items-center justify-center rounded-full bg-white/90 text-ink shadow hover:bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              className="absolute top-1/2 left-3 z-10 flex size-9 -translate-y-1/2 items-center justify-center rounded-full bg-white/90 text-ink shadow hover:bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               aria-label="Previous photo"
             >
               <ArrowLeft className="size-4" />
@@ -108,12 +110,12 @@ function Gallery({ estate }: { estate: RealEstate }) {
             <button
               type="button"
               onClick={() => setIndex((i) => (i + 1) % items.length)}
-              className="absolute top-1/2 right-3 flex size-9 -translate-y-1/2 items-center justify-center rounded-full bg-white/90 text-ink shadow hover:bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              className="absolute top-1/2 right-3 z-10 flex size-9 -translate-y-1/2 items-center justify-center rounded-full bg-white/90 text-ink shadow hover:bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               aria-label="Next photo"
             >
               <ArrowRight className="size-4" />
             </button>
-            <span className="absolute right-3 bottom-3 rounded bg-ink/80 px-2 py-0.5 text-xs text-white tabular">
+            <span className="absolute right-3 bottom-3 z-10 rounded bg-ink/80 px-2 py-0.5 text-xs text-white tabular">
               {index + 1} / {items.length}
             </span>
           </>
@@ -129,18 +131,19 @@ function Gallery({ estate }: { estate: RealEstate }) {
               aria-label={`Show photo ${i + 1}`}
               aria-current={i === index}
               className={cn(
-                "relative h-16 w-24 shrink-0 overflow-hidden rounded-md border-2 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                "relative h-16 w-24 shrink-0 overflow-hidden rounded-md border-2 bg-muted transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                 i === index
                   ? "border-brand"
                   : "border-transparent opacity-70 hover:opacity-100",
               )}
             >
-              <Image
+              <ImageWithLoader
                 src={m.url as string}
                 alt=""
                 fill
                 sizes="96px"
                 className="object-cover"
+                loaderSize={18}
               />
             </button>
           ))}
@@ -541,20 +544,7 @@ function TokenPanel({ estate }: { estate: RealEstate }) {
 }
 
 function DetailSkeleton() {
-  return (
-    <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
-      <span className="sr-only">Loading…</span>
-      <Skeleton className="h-4 w-48" />
-      <Skeleton className="mt-4 h-9 w-80" />
-      <div className="mt-8 grid gap-8 lg:grid-cols-[1fr_360px]">
-        <div className="space-y-6">
-          <Skeleton className="aspect-[16/9] rounded-lg" />
-          <Skeleton className="h-24 rounded-lg" />
-        </div>
-        <Skeleton className="h-96 rounded-lg" />
-      </div>
-    </div>
-  );
+  return <PageLoader label="Loading offering…" className="min-h-[60vh]" />;
 }
 
 function NotFoundState() {
