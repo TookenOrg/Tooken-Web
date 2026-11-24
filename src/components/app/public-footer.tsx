@@ -31,6 +31,11 @@ export function PublicFooter() {
                 How it works
               </Link>
             </li>
+            <li>
+              <Link href="/project" className="hover:text-ink">
+                About the MVP
+              </Link>
+            </li>
             {!(isAuthenticated && role === "USER") ? (
               <li>
                 <Link href="/#institutions" className="hover:text-ink">
