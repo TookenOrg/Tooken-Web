@@ -145,7 +145,7 @@ export function sortOrders<T extends Pick<IssuanceOrder, "createdAt">>(
   return [...orders].sort((a, b) => time(b.createdAt) - time(a.createdAt));
 }
 
-export type CurrencyTotal = { currency: string; amount: string };
+export type CurrencyTotal = { currency: string; amount: string | null };
 
 /**
  * Sums `amountDue` per currency with exact decimal arithmetic. Malformed
@@ -154,9 +154,13 @@ export type CurrencyTotal = { currency: string; amount: string };
 export function totalsByCurrency(
   orders: readonly Pick<IssuanceOrder, "amountDue" | "currencyCode">[],
 ): CurrencyTotal[] {
-  const sums = new Map<string, string>();
+  const sums = new Map<string, string | null>();
   for (const o of orders) {
-    const currency = o.currencyCode || "EUR";
+    const currency = o.currencyCode?.trim();
+    if (!currency || !hasPaymentCurrency(o)) {
+      sums.set("Currency unavailable", null);
+      continue;
+    }
     try {
       sums.set(currency, addDecimal(sums.get(currency) ?? "0", o.amountDue));
     } catch {
@@ -174,6 +178,20 @@ export function isReservationLapsed(
   now = Date.now(),
 ): boolean {
   if (orderBucket(order.statusCode) !== "awaiting") return false;
-  const t = time(order.reservationExpiresAt);
-  return t > 0 && t <= now;
+  return reservationDeadlineState(order.reservationExpiresAt, now) === "lapsed";
+}
+
+export function reservationDeadlineState(
+  expiresAt: string | null | undefined,
+  now = Date.now(),
+): "active" | "lapsed" | "unknown" {
+  const expires = expiresAt ? Date.parse(expiresAt) : Number.NaN;
+  if (!Number.isFinite(expires)) return "unknown";
+  return expires <= now ? "lapsed" : "active";
+}
+
+export function hasPaymentCurrency(
+  order: Pick<IssuanceOrder, "currencyCode">,
+): boolean {
+  return /^[A-Z]{3}$/.test(order.currencyCode?.trim() ?? "");
 }

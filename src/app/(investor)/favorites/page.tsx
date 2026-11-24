@@ -6,13 +6,13 @@ import { PageHeader } from "@/components/app/page-header";
 import { Panel } from "@/components/app/panel";
 import { RealEstateCard } from "@/components/app/real-estate-card";
 import { EmptyState, ErrorState } from "@/components/app/states";
+import { PageLoader } from "@/components/app/tooken-loader";
 import { Button } from "@/components/ui/button";
-import { Skeleton } from "@/components/ui/skeleton";
 import { useSession } from "@/lib/auth/session-context";
 import { useFavorites } from "@/lib/favorites";
 
 export default function FavoritesPage() {
-  const { user } = useSession();
+  const { user, userLoading, refreshUser } = useSession();
   const favorites = useFavorites(user?.id);
   const watched = favorites.data ?? [];
 
@@ -41,12 +41,19 @@ export default function FavoritesPage() {
             onRetry={() => favorites.refetch()}
           />
         </Panel>
-      ) : favorites.isLoading || !user ? (
-        <div className="grid gap-5 sm:grid-cols-2 xl:grid-cols-3">
-          {["a", "b", "c"].map((k) => (
-            <Skeleton key={k} className="h-80 rounded-lg" />
-          ))}
-        </div>
+      ) : userLoading || (user && favorites.isLoading) ? (
+        <PageLoader
+          label="Loading watchlist…"
+          className="min-h-72 rounded-sm border border-border bg-card/60"
+        />
+      ) : !user ? (
+        <Panel>
+          <ErrorState
+            title="Watchlist unavailable"
+            error={new Error("Account details could not be loaded.")}
+            onRetry={() => refreshUser()}
+          />
+        </Panel>
       ) : watched.length === 0 ? (
         <Panel>
           <EmptyState

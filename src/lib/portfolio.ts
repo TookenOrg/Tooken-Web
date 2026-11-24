@@ -4,12 +4,8 @@
  */
 
 import type { IssuanceOrder } from "@/lib/api/types";
-import {
-  addDecimal,
-  compareDecimal,
-  multiplyDecimal,
-  parseDecimal,
-} from "@/lib/format";
+import { addDecimal, multiplyDecimal, parseDecimal } from "@/lib/format";
+import { hasPaymentCurrency } from "@/lib/order-book";
 import { isOrderSettled } from "@/lib/status";
 
 /** Orders still waiting on payment or delivery (shares are reserved). */
@@ -38,21 +34,21 @@ export type Holding = {
   currency: string;
   shares: number;
   /** Gross amount paid for the shares, fees excluded. */
-  invested: string;
+  invested: string | null;
   /** Weighted average unit price, 2 decimals. */
-  averagePrice: string;
+  averagePrice: string | null;
   orders: number;
   lastOrderAt: string;
 };
 
 export type PortfolioSummary = {
   /** Gross invested capital of settled orders, per currency. */
-  invested: Record<string, string>;
+  invested: Record<string, string | null>;
   holdings: Holding[];
   sharesHeld: number;
   pendingCount: number;
   /** Amount due (fees included) of pending orders, per currency. */
-  pendingAmount: Record<string, string>;
+  pendingAmount: Record<string, string | null>;
 };
 
 /** `a / b` rounded half-up to `scale` decimals; "0.00" when b is zero. */
@@ -77,7 +73,11 @@ export function divideDecimal(
   return `${negative && q !== 0n ? "-" : ""}${whole}${frac}`;
 }
 
-function addTo(map: Record<string, string>, currency: string, amount: string) {
+function addTo(
+  map: Record<string, string | null>,
+  currency: string,
+  amount: string,
+) {
   map[currency] = addDecimal(map[currency] ?? "0", amount || "0");
 }
 
@@ -85,36 +85,43 @@ export function summarizePortfolio(
   orders: IssuanceOrder[],
   titles: Record<number, string | undefined> = {},
 ): PortfolioSummary {
-  const invested: Record<string, string> = {};
-  const pendingAmount: Record<string, string> = {};
-  const byEstate = new Map<
-    number,
-    Holding & { cost8: string } // exact cost at unit-price precision
-  >();
+  const invested: Record<string, string | null> = {};
+  const pendingAmount: Record<string, string | null> = {};
+  const byEstate = new Map<string, Holding & { cost8: string | null }>();
   let sharesHeld = 0;
   let pendingCount = 0;
 
   for (const o of orders) {
-    const currency = o.currencyCode || "EUR";
+    const knownCurrency = hasPaymentCurrency(o)
+      ? o.currencyCode.trim()
+      : undefined;
+    const currency = knownCurrency || "Currency unavailable";
     if (isOrderPending(o.statusCode)) {
       pendingCount += 1;
-      addTo(pendingAmount, currency, o.amountDue);
+      if (knownCurrency) addTo(pendingAmount, currency, o.amountDue);
+      else pendingAmount[currency] = null;
       continue;
     }
     if (!isOrderSettled(o.statusCode)) continue;
 
-    addTo(invested, currency, o.grossAmount);
+    if (knownCurrency) addTo(invested, currency, o.grossAmount);
+    else invested[currency] = null;
     sharesHeld += o.tokenQuantity;
-    const cost = multiplyDecimal(o.unitPrice || "0", o.tokenQuantity, 8);
-    const prev = byEstate.get(o.realEstateId);
+    const cost = knownCurrency
+      ? multiplyDecimal(o.unitPrice || "0", o.tokenQuantity, 8)
+      : null;
+    const holdingKey = `${o.realEstateId}:${currency}`;
+    const prev = byEstate.get(holdingKey);
     if (prev) {
       prev.shares += o.tokenQuantity;
-      prev.invested = addDecimal(prev.invested, o.grossAmount || "0");
-      prev.cost8 = addDecimal(prev.cost8, cost, 8);
+      if (prev.invested !== null && prev.cost8 !== null && cost !== null) {
+        prev.invested = addDecimal(prev.invested, o.grossAmount || "0");
+        prev.cost8 = addDecimal(prev.cost8, cost, 8);
+      }
       prev.orders += 1;
       if (o.createdAt > prev.lastOrderAt) prev.lastOrderAt = o.createdAt;
     } else {
-      byEstate.set(o.realEstateId, {
+      byEstate.set(holdingKey, {
         realEstateId: o.realEstateId,
         title:
           titles[o.realEstateId] ??
@@ -122,8 +129,8 @@ export function summarizePortfolio(
           `Offering #${o.realEstateId}`,
         currency,
         shares: o.tokenQuantity,
-        invested: addDecimal("0", o.grossAmount || "0"),
-        averagePrice: "0.00",
+        invested: knownCurrency ? addDecimal("0", o.grossAmount || "0") : null,
+        averagePrice: knownCurrency ? "0.00" : null,
         orders: 1,
         lastOrderAt: o.createdAt,
         cost8: cost,
@@ -134,9 +141,12 @@ export function summarizePortfolio(
   const holdings = Array.from(byEstate.values())
     .map(({ cost8, ...h }) => ({
       ...h,
-      averagePrice: divideDecimal(cost8, h.shares),
+      averagePrice: cost8 === null ? null : divideDecimal(cost8, h.shares),
     }))
-    .sort((a, b) => compareDecimal(b.invested, a.invested));
+    .sort(
+      (a, b) =>
+        a.title.localeCompare(b.title) || a.currency.localeCompare(b.currency),
+    );
 
   return { invested, holdings, sharesHeld, pendingCount, pendingAmount };
 }
@@ -173,6 +183,51 @@ export function maxSubscribable({
   if (typeof remaining === "number") caps.push(remaining);
   if (!caps.length) return Number.MAX_SAFE_INTEGER;
   return Math.max(0, Math.min(...caps));
+}
+
+/**
+ * Whole shares from a budget excluding fees; the remainder retains the greater
+ * input precision. Negative-signed budgets, including negative zero, are invalid.
+ */
+export function budgetToShares(
+  budget: string,
+  unitPrice: string,
+  maxQuantity: number,
+): { quantity: number; remainder: string } | null {
+  if (
+    typeof budget !== "string" ||
+    typeof unitPrice !== "string" ||
+    !Number.isSafeInteger(maxQuantity) ||
+    maxQuantity < 0
+  ) {
+    return null;
+  }
+
+  const trimmedBudget = budget.trim();
+  if (trimmedBudget.startsWith("-")) return null;
+
+  let amount: ReturnType<typeof parseDecimal>;
+  let price: ReturnType<typeof parseDecimal>;
+  try {
+    amount = parseDecimal(trimmedBudget);
+    price = parseDecimal(unitPrice);
+  } catch {
+    return null;
+  }
+  if (price.int <= 0n) return null;
+
+  const scale = Math.max(amount.scale, price.scale);
+  const amountInt = amount.int * 10n ** BigInt(scale - amount.scale);
+  const priceInt = price.int * 10n ** BigInt(scale - price.scale);
+  const affordable = amountInt / priceInt;
+  const cap = BigInt(maxQuantity);
+  const quantity = affordable > cap ? cap : affordable;
+  const digits = (amountInt - quantity * priceInt)
+    .toString()
+    .padStart(scale + 1, "0");
+  const remainder =
+    scale === 0 ? digits : `${digits.slice(0, -scale)}.${digits.slice(-scale)}`;
+  return { quantity: Number(quantity), remainder };
 }
 
 /**

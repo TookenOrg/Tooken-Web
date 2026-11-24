@@ -21,11 +21,11 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: {
-    default: "Tooken — Tokenized real estate",
+    default: "Tooken — Real-world asset tokenization",
     template: "%s · Tooken",
   },
   description:
-    "Institutional-grade platform to tokenize, distribute and settle real estate securities on-chain.",
+    "Infrastructure for real-world asset tokenization, verified investors and ownership management, built on ERC-3643.",
   icons: {
     icon: { url: "/favicon.svg", type: "image/svg+xml" },
     apple: { url: "/apple-touch-icon.png", sizes: "180x180" },

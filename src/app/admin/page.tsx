@@ -17,6 +17,7 @@ import {
   Wallet,
 } from "lucide-react";
 import Link from "next/link";
+import { useNow } from "@/app/(investor)/_components/use-now";
 import { HealthIndicator } from "@/components/app/health-indicator";
 import { KeyValueList } from "@/components/app/key-value";
 import { PageHeader } from "@/components/app/page-header";
@@ -52,9 +53,11 @@ import {
   formatDateTime,
   formatMoney,
   formatNumber,
+  formatRecordedMoney,
   formatRelative,
 } from "@/lib/format";
 import { needsOnChainSync } from "@/lib/kyc-review";
+import { hasPaymentCurrency, reservationDeadlineState } from "@/lib/order-book";
 import { countryName } from "@/lib/reference";
 import { isOrderSettled } from "@/lib/status";
 import { cn } from "@/lib/utils";
@@ -62,11 +65,15 @@ import { cn } from "@/lib/utils";
 /** Exact sums grouped by currency; malformed amounts are skipped. */
 function sumByCurrency(
   items: { amount: string | undefined; currency: string | undefined }[],
-): Map<string, string> {
-  const totals = new Map<string, string>();
+): Map<string, string | null> {
+  const totals = new Map<string, string | null>();
   for (const { amount, currency } of items) {
     if (!amount) continue;
-    const ccy = currency || "EUR";
+    const ccy = currency?.trim();
+    if (!ccy || !/^[A-Z]{3}$/.test(ccy)) {
+      totals.set("Currency unavailable", null);
+      continue;
+    }
     try {
       totals.set(ccy, addDecimal(totals.get(ccy) ?? "0", amount, 2));
     } catch {
@@ -80,18 +87,30 @@ function MoneyTotals({
   totals,
   compact,
 }: {
-  totals: Map<string, string>;
+  totals: Map<string, string | null>;
   compact?: boolean;
 }) {
   const entries = [...totals.entries()];
-  if (!entries.length) return <>{formatMoney("0", "EUR", { decimals: 0 })}</>;
+  if (!entries.length) return "—";
   return (
     <>
       {entries
-        .map(([ccy, v]) => formatMoney(v, ccy, { decimals: 0, compact }))
+        .map(([ccy, v]) =>
+          v === null ? ccy : formatMoney(v, ccy, { decimals: 0, compact }),
+        )
         .join(" · ")}
     </>
   );
+}
+
+function recordedValuation(
+  amount: string | null | undefined,
+  currency: string | null | undefined,
+) {
+  if (!amount) return "—";
+  return currency
+    ? formatMoney(amount, currency, { decimals: 0 })
+    : "Currency unavailable";
 }
 
 type Action = {
@@ -101,6 +120,7 @@ type Action = {
   tone: string;
   title: string;
   detail: string;
+  sortAt: number;
 };
 
 export default function AdminOverviewPage() {
@@ -136,6 +156,7 @@ export default function AdminOverviewPage() {
     })),
   );
   const awaiting = allOrders.filter((o) => o.statusCode === "AWAITING_PAYMENT");
+  const now = useNow(1000, awaiting.length > 0);
   const awaitingTotal = sumByCurrency(
     awaiting.map((o) => ({ amount: o.amountDue, currency: o.currencyCode })),
   );
@@ -153,16 +174,65 @@ export default function AdminOverviewPage() {
   const kycError =
     (isAdmin && kyc.isError ? kyc.error : null) ??
     syncDetails.find((q) => q.isError)?.error;
+  const syncUnknown = syncDetails.some(
+    (q) => q.isSuccess && (!q.data || needsOnChainSync(q.data) === undefined),
+  );
+  const actionError =
+    (estates.isError ? estates.error : null) ??
+    (orders.isError ? orders.error : null) ??
+    kycError ??
+    (syncUnknown
+      ? new Error("Some registration statuses are unavailable.")
+      : null);
+  const actionLoading =
+    estates.isLoading ||
+    orders.isLoading ||
+    (isAdmin && kyc.isLoading) ||
+    syncDetails.some((q) => q.isLoading);
+  const timestamp = (value: string | null | undefined) => {
+    const t = value ? Date.parse(value) : Number.NaN;
+    return Number.isFinite(t) ? t : Number.POSITIVE_INFINITY;
+  };
 
   const actions: Action[] = [
-    ...awaiting.map((o) => ({
-      key: `order-${o.orderRef}`,
-      href: `/admin/orders/${encodeURIComponent(o.orderRef)}`,
-      icon: Wallet,
-      tone: "bg-amber-50 text-amber-700",
-      title: `Confirm payment · ${o.orderRef}`,
-      detail: `${formatMoney(o.amountDue, o.currencyCode)} · ${o.realEstateTitle ?? `Asset #${o.realEstateId}`} · reservation ends ${formatRelative(o.reservationExpiresAt)}`,
-    })),
+    ...awaiting.map((o) => {
+      const deadline = reservationDeadlineState(o.reservationExpiresAt, now);
+      return {
+        key: `order-${o.orderRef}`,
+        href: `/admin/orders/${encodeURIComponent(o.orderRef)}`,
+        icon: Wallet,
+        tone: "bg-amber-50 text-amber-700",
+        title:
+          deadline === "lapsed"
+            ? `Review lapsed reservation · ${o.orderRef}`
+            : deadline === "unknown"
+              ? `Review reservation · ${o.orderRef}`
+              : `${isAdmin && hasPaymentCurrency(o) ? "Confirm payment" : "View order"} · ${o.orderRef}`,
+        detail: `${formatRecordedMoney(o.amountDue, o.currencyCode)} · ${o.realEstateTitle ?? `Asset #${o.realEstateId}`} · ${
+          deadline === "unknown"
+            ? "deadline unavailable"
+            : deadline === "lapsed"
+              ? "awaiting server status"
+              : `reservation ends ${formatRelative(o.reservationExpiresAt)}`
+        }`,
+        sortAt: timestamp(o.reservationExpiresAt),
+      };
+    }),
+    ...allOrders
+      .filter(
+        (o) =>
+          o.statusCode === "DELIVERY_FAILED" ||
+          o.statusCode === "REVERSAL_FAILED",
+      )
+      .map((o) => ({
+        key: `incident-${o.orderRef}`,
+        href: `/admin/orders/${encodeURIComponent(o.orderRef)}`,
+        icon: Wallet,
+        tone: "bg-red-50 text-red-700",
+        title: `Investigate order · ${o.orderRef}`,
+        detail: `${o.realEstateTitle ?? `Asset #${o.realEstateId}`} · ${o.statusCode === "DELIVERY_FAILED" ? "Delivery failed" : "Reversal failed"}`,
+        sortAt: timestamp(o.updatedAt),
+      })),
     ...(isAdmin
       ? pendingKyc.map((k) => ({
           key: `kyc-${k.id}`,
@@ -171,6 +241,7 @@ export default function AdminOverviewPage() {
           tone: "bg-cyan-50 text-cyan-700",
           title: `Review KYC · ${k.declared_full_name ?? k.email ?? `File #${k.id}`}`,
           detail: `${countryName(k.declared_country_code)} · submitted ${formatRelative(k.submitted_at)}`,
+          sortAt: timestamp(k.submitted_at ?? k.created_at),
         }))
       : []),
     ...syncKyc.map((k) => ({
@@ -180,6 +251,7 @@ export default function AdminOverviewPage() {
       tone: "bg-cyan-50 text-cyan-700",
       title: `Sync KYC · ${k.declared_full_name ?? k.email ?? `File #${k.id}`}`,
       detail: "Approved. Register the investor on-chain to enable investing.",
+      sortAt: timestamp(k.decided_at ?? k.created_at),
     })),
     ...drafts.map((r) => ({
       key: `draft-${r.id}`,
@@ -188,6 +260,7 @@ export default function AdminOverviewPage() {
       tone: "bg-slate-100 text-slate-700",
       title: `Publish draft · ${r.title ?? `#${r.id}`}`,
       detail: "Complete, then tokenize to make it investable.",
+      sortAt: Number.POSITIVE_INFINITY,
     })),
     ...published.map((r) => ({
       key: `open-${r.id}`,
@@ -196,8 +269,9 @@ export default function AdminOverviewPage() {
       tone: "bg-emerald-50 text-emerald-700",
       title: `Open fundraising · ${r.title ?? `#${r.id}`}`,
       detail: "Token deployed. Subscriptions are not open yet.",
+      sortAt: Number.POSITIVE_INFINITY,
     })),
-  ];
+  ].sort((a, b) => a.sortAt - b.sortAt || a.key.localeCompare(b.key));
 
   const firstName = user?.full_name?.split(" ")[0];
 
@@ -227,37 +301,73 @@ export default function AdminOverviewPage() {
       />
 
       <div className="space-y-6">
-        <div className={cn("grid gap-4 sm:grid-cols-2", "xl:grid-cols-3")}>
+        <ActionQueue
+          actions={actions}
+          loading={actionLoading}
+          error={actionError}
+          isAdmin={isAdmin}
+          onRetry={() => {
+            if (estates.isError) estates.refetch();
+            if (orders.isError) orders.refetch();
+            if (isAdmin && kyc.isError) kyc.refetch();
+            for (const q of syncDetails) q.refetch();
+          }}
+        />
+        <div className="grid grid-cols-2 gap-3 xl:grid-cols-3">
           <StatCard
             label="Offerings"
             icon={Building2}
             loading={estates.isLoading}
-            value={formatNumber(assets.length)}
-            hint={`${drafts.length} draft · ${published.length} published · ${fundraising.length} fundraising`}
+            value={
+              estates.isError ? "Unavailable" : formatNumber(assets.length)
+            }
+            hint={
+              estates.isError
+                ? "Offerings could not be loaded"
+                : `${drafts.length} draft · ${published.length} published · ${fundraising.length} fundraising`
+            }
           />
           <StatCard
-            label="Valuation under management"
+            label="Recorded offering valuations"
             icon={Landmark}
             accent="brand"
             loading={estates.isLoading}
-            value={<MoneyTotals totals={valuation} />}
-            hint="Sum of asset valuations, all statuses"
+            value={
+              estates.isError ? (
+                "Unavailable"
+              ) : (
+                <MoneyTotals totals={valuation} />
+              )
+            }
+            hint="Recorded amounts, not a current market valuation"
           />
           <StatCard
             label="Issuers"
             icon={BadgeCheck}
             loading={issuers.isLoading}
-            value={formatNumber(issuers.data?.length ?? 0)}
-            hint={`${activeIssuers} active`}
+            value={
+              issuers.isError
+                ? "Unavailable"
+                : formatNumber(issuers.data?.length ?? 0)
+            }
+            hint={
+              issuers.isError
+                ? "Issuers could not be loaded"
+                : `${activeIssuers} active`
+            }
           />
           <StatCard
             label="Awaiting payment"
             icon={Clock}
             accent="brand"
             loading={orders.isLoading}
-            value={formatNumber(awaiting.length)}
+            value={
+              orders.isError ? "Unavailable" : formatNumber(awaiting.length)
+            }
             hint={
-              awaiting.length ? (
+              orders.isError ? (
+                "Orders could not be loaded"
+              ) : awaiting.length ? (
                 <>
                   <MoneyTotals totals={awaitingTotal} /> due
                 </>
@@ -271,11 +381,17 @@ export default function AdminOverviewPage() {
             icon={CheckCircle2}
             accent="success"
             loading={orders.isLoading}
-            value={formatNumber(settled.length)}
+            value={
+              orders.isError ? "Unavailable" : formatNumber(settled.length)
+            }
             hint={
-              <>
-                <MoneyTotals totals={settledVolume} /> subscribed
-              </>
+              orders.isError ? (
+                "Orders could not be loaded"
+              ) : (
+                <>
+                  <MoneyTotals totals={settledVolume} /> subscribed
+                </>
+              )
             }
           />
           {isAdmin ? (
@@ -284,7 +400,9 @@ export default function AdminOverviewPage() {
               icon={FileCheck2}
               accent="signal"
               loading={kyc.isLoading}
-              value={formatNumber(pendingKyc.length)}
+              value={
+                kyc.isError ? "Unavailable" : formatNumber(pendingKyc.length)
+              }
               hint={
                 <Link href="/admin/compliance" className="hover:underline">
                   Open compliance queue
@@ -297,8 +415,16 @@ export default function AdminOverviewPage() {
               icon={Unlock}
               accent="signal"
               loading={estates.isLoading}
-              value={formatNumber(fundraising.length)}
-              hint="Offerings open for subscription"
+              value={
+                estates.isError
+                  ? "Unavailable"
+                  : formatNumber(fundraising.length)
+              }
+              hint={
+                estates.isError
+                  ? "Offerings could not be loaded"
+                  : "Offerings open for subscription"
+              }
             />
           )}
         </div>
@@ -319,78 +445,96 @@ export default function AdminOverviewPage() {
             />
           </div>
           <div className="min-w-0 space-y-6">
-            <Panel>
-              <PanelHeader
-                title="Action required"
-                description="Items waiting on an operator."
-                actions={
-                  actions.length ? (
-                    <span className="rounded-full bg-ink px-2 py-0.5 text-xs font-medium text-white tabular">
-                      {actions.length}
-                    </span>
-                  ) : null
-                }
-              />
-              {estates.isLoading ||
-              orders.isLoading ||
-              (isAdmin && kyc.isLoading) ||
-              syncDetails.some((q) => q.isLoading) ? (
-                <TableSkeleton rows={3} cols={1} />
-              ) : kycError ? (
-                <ErrorState
-                  error={kycError}
-                  onRetry={() => {
-                    kyc.refetch();
-                    for (const q of syncDetails) q.refetch();
-                  }}
-                />
-              ) : actions.length === 0 ? (
-                <EmptyState
-                  icon={CheckCircle2}
-                  title="All clear"
-                  description="Nothing is waiting on you right now."
-                />
-              ) : (
-                <ul className="divide-y divide-border">
-                  {actions.slice(0, 8).map((a) => (
-                    <li key={a.key}>
-                      <Link
-                        href={a.href}
-                        className="group flex items-center gap-3 px-5 py-3 hover:bg-muted/50 focus-visible:bg-muted/50 focus-visible:outline-none"
-                      >
-                        <span
-                          className={cn(
-                            "flex size-8 shrink-0 items-center justify-center rounded-md",
-                            a.tone,
-                          )}
-                        >
-                          <a.icon className="size-4" aria-hidden />
-                        </span>
-                        <span className="min-w-0 flex-1">
-                          <span className="block truncate text-sm font-medium text-ink">
-                            {a.title}
-                          </span>
-                          <span className="block truncate text-xs text-muted-foreground">
-                            {a.detail}
-                          </span>
-                        </span>
-                        <ChevronRight className="size-4 shrink-0 text-muted-foreground transition group-hover:translate-x-0.5" />
-                      </Link>
-                    </li>
-                  ))}
-                  {actions.length > 8 ? (
-                    <li className="px-5 py-2.5 text-xs text-muted-foreground">
-                      +{actions.length - 8} more
-                    </li>
-                  ) : null}
-                </ul>
-              )}
-            </Panel>
             <PlatformHealth isAdmin={isAdmin} />
           </div>
         </div>
       </div>
     </>
+  );
+}
+
+function ActionQueue({
+  actions,
+  loading,
+  error,
+  isAdmin,
+  onRetry,
+}: {
+  actions: Action[];
+  loading: boolean;
+  error: unknown;
+  isAdmin: boolean;
+  onRetry: () => void;
+}) {
+  return (
+    <Panel>
+      <PanelHeader
+        title="Action required"
+        description="Items waiting on an operator."
+        actions={
+          !loading && !error && actions.length ? (
+            <span className="rounded-full bg-ink px-2 py-0.5 text-xs font-medium text-white tabular">
+              {actions.length}
+            </span>
+          ) : null
+        }
+      />
+      {loading ? (
+        <TableSkeleton rows={3} cols={1} />
+      ) : error ? (
+        <ErrorState error={error} onRetry={onRetry} />
+      ) : actions.length === 0 ? (
+        <EmptyState
+          icon={CheckCircle2}
+          title="All clear"
+          description="Nothing is waiting on you right now."
+        />
+      ) : (
+        <ul className="divide-y divide-border">
+          {actions.slice(0, 8).map((a) => (
+            <li key={a.key}>
+              <Link
+                href={a.href}
+                className="group flex items-center gap-3 px-5 py-3 hover:bg-muted/50 focus-visible:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              >
+                <span
+                  className={cn(
+                    "flex size-8 shrink-0 items-center justify-center rounded-md",
+                    a.tone,
+                  )}
+                >
+                  <a.icon className="size-4" aria-hidden />
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="block break-words text-sm font-medium text-ink">
+                    {a.title}
+                  </span>
+                  <span className="block break-words text-xs text-muted-foreground">
+                    {a.detail}
+                  </span>
+                </span>
+                <ChevronRight className="size-4 shrink-0 text-muted-foreground transition group-hover:translate-x-0.5" />
+              </Link>
+            </li>
+          ))}
+          {actions.length > 8 ? (
+            <li className="flex flex-wrap gap-3 px-5 py-3 text-xs">
+              <Link href="/admin/orders" className="underline">
+                View order book
+              </Link>
+              {isAdmin ? (
+                <Link href="/admin/compliance" className="underline">
+                  View KYC queue
+                </Link>
+              ) : null}
+              <Link href="/admin/assets" className="underline">
+                View assets
+              </Link>
+            </li>
+          ) : null}
+        </ul>
+      )}
+    </Panel>
   );
 }
 
@@ -428,49 +572,74 @@ function RecentOrders({
           description="Orders appear once investors subscribe to an open offering."
         />
       ) : (
-        <div className="overflow-x-auto">
-          <Table>
-            <TableHeader>
-              <TableRow className="hover:bg-transparent">
-                <TableHead className="pl-5">Reference</TableHead>
-                <TableHead>Asset</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead className="text-right">Shares</TableHead>
-                <TableHead className="text-right">Amount due</TableHead>
-                <TableHead className="pr-5">Placed</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {rows.map((o) => (
-                <TableRow key={o.orderRef}>
-                  <TableCell className="pl-5">
-                    <Link
-                      href={`/admin/orders/${encodeURIComponent(o.orderRef)}`}
-                      className="whitespace-nowrap font-mono text-xs font-medium text-ink hover:underline"
-                    >
-                      {o.orderRef}
-                    </Link>
-                  </TableCell>
-                  <TableCell className="max-w-[200px] truncate">
+        <>
+          <ul className="divide-y divide-border md:hidden">
+            {rows.map((o) => (
+              <li key={o.orderRef}>
+                <Link
+                  href={`/admin/orders/${encodeURIComponent(o.orderRef)}`}
+                  className="block space-y-1 px-5 py-3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                >
+                  <span className="block break-words font-medium text-ink">
                     {o.realEstateTitle ?? `#${o.realEstateId}`}
-                  </TableCell>
-                  <TableCell>
+                  </span>
+                  <span className="block break-all font-mono text-xs text-muted-foreground">
+                    {o.orderRef}
+                  </span>
+                  <span className="flex flex-wrap items-center justify-between gap-2 text-sm">
                     <OrderStatusBadge code={o.statusCode} />
-                  </TableCell>
-                  <TableCell className="text-right tabular">
-                    {formatNumber(o.tokenQuantity)}
-                  </TableCell>
-                  <TableCell className="whitespace-nowrap text-right font-medium tabular">
-                    {formatMoney(o.amountDue, o.currencyCode)}
-                  </TableCell>
-                  <TableCell className="whitespace-nowrap pr-5 text-sm text-muted-foreground">
-                    {formatDateTime(o.createdAt)}
-                  </TableCell>
+                    <span>
+                      {formatRecordedMoney(o.amountDue, o.currencyCode)}
+                    </span>
+                  </span>
+                </Link>
+              </li>
+            ))}
+          </ul>
+          <div className="hidden overflow-x-auto md:block">
+            <Table>
+              <TableHeader>
+                <TableRow className="hover:bg-transparent">
+                  <TableHead className="pl-5">Reference</TableHead>
+                  <TableHead>Asset</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead className="text-right">Shares</TableHead>
+                  <TableHead className="text-right">Amount due</TableHead>
+                  <TableHead className="pr-5">Placed</TableHead>
                 </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </div>
+              </TableHeader>
+              <TableBody>
+                {rows.map((o) => (
+                  <TableRow key={o.orderRef}>
+                    <TableCell className="pl-5">
+                      <Link
+                        href={`/admin/orders/${encodeURIComponent(o.orderRef)}`}
+                        className="whitespace-nowrap font-mono text-xs font-medium text-ink hover:underline"
+                      >
+                        {o.orderRef}
+                      </Link>
+                    </TableCell>
+                    <TableCell className="max-w-[200px] truncate">
+                      {o.realEstateTitle ?? `#${o.realEstateId}`}
+                    </TableCell>
+                    <TableCell>
+                      <OrderStatusBadge code={o.statusCode} />
+                    </TableCell>
+                    <TableCell className="text-right tabular">
+                      {formatNumber(o.tokenQuantity)}
+                    </TableCell>
+                    <TableCell className="whitespace-nowrap text-right font-medium tabular">
+                      {formatRecordedMoney(o.amountDue, o.currencyCode)}
+                    </TableCell>
+                    <TableCell className="whitespace-nowrap pr-5 text-sm text-muted-foreground">
+                      {formatDateTime(o.createdAt)}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        </>
       )}
     </Panel>
   );
@@ -515,61 +684,93 @@ function Offerings({
           }
         />
       ) : (
-        <div className="overflow-x-auto">
-          <Table>
-            <TableHeader>
-              <TableRow className="hover:bg-transparent">
-                <TableHead className="pl-5">Asset</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead className="min-w-[160px]">Subscribed</TableHead>
-                <TableHead className="pr-5 text-right">Valuation</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {rows.map((r) => {
-                const c = r.configuration;
-                const sold = r.progression?.tokens_sold ?? 0;
-                const pct = Number(r.progression?.tokens_sold_pctg ?? 0);
-                return (
-                  <TableRow key={r.id}>
-                    <TableCell className="pl-5">
-                      <Link
-                        href={`/admin/assets/${r.id}`}
-                        className="font-medium text-ink hover:underline"
-                      >
-                        {r.title ?? `#${r.id}`}
-                      </Link>
-                      <p className="text-xs text-muted-foreground">
-                        {r.location?.city ?? "—"}
-                      </p>
-                    </TableCell>
-                    <TableCell>
-                      <RealEstateStatusBadge status={r.status} />
-                    </TableCell>
-                    <TableCell>
-                      <div className="space-y-1">
-                        <Progress
-                          value={Math.min(100, pct)}
-                          aria-label={`${pct} % subscribed`}
-                          className="h-1.5 bg-muted [&>div]:bg-emerald-600"
-                        />
-                        <p className="text-xs text-muted-foreground tabular">
-                          {formatNumber(sold)} / {formatNumber(c?.total_shares)}{" "}
-                          · {formatNumber(pct, 2)} %
+        <>
+          <ul className="divide-y divide-border md:hidden">
+            {rows.map((r) => (
+              <li key={r.id}>
+                <Link
+                  href={`/admin/assets/${r.id}`}
+                  className="block space-y-1 px-5 py-3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                >
+                  <span className="block break-words font-medium text-ink">
+                    {r.title ?? `#${r.id}`}
+                  </span>
+                  <span className="flex flex-wrap items-center justify-between gap-2 text-sm">
+                    <RealEstateStatusBadge status={r.status} />
+                    <span>
+                      {recordedValuation(
+                        r.configuration?.total_valuation,
+                        r.configuration?.currency_code,
+                      )}
+                    </span>
+                  </span>
+                </Link>
+              </li>
+            ))}
+          </ul>
+          <div className="hidden overflow-x-auto md:block">
+            <Table>
+              <TableHeader>
+                <TableRow className="hover:bg-transparent">
+                  <TableHead className="pl-5">Asset</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead className="min-w-[160px]">Subscribed</TableHead>
+                  <TableHead className="pr-5 text-right">Valuation</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {rows.map((r) => {
+                  const c = r.configuration;
+                  const sold = r.progression?.tokens_sold;
+                  const pctValue = r.progression?.tokens_sold_pctg;
+                  const pct = pctValue == null ? null : Number(pctValue);
+                  return (
+                    <TableRow key={r.id}>
+                      <TableCell className="pl-5">
+                        <Link
+                          href={`/admin/assets/${r.id}`}
+                          className="font-medium text-ink hover:underline"
+                        >
+                          {r.title ?? `#${r.id}`}
+                        </Link>
+                        <p className="text-xs text-muted-foreground">
+                          {r.location?.city ?? "—"}
                         </p>
-                      </div>
-                    </TableCell>
-                    <TableCell className="whitespace-nowrap pr-5 text-right font-medium tabular">
-                      {formatMoney(c?.total_valuation, c?.currency_code, {
-                        decimals: 0,
-                      })}
-                    </TableCell>
-                  </TableRow>
-                );
-              })}
-            </TableBody>
-          </Table>
-        </div>
+                      </TableCell>
+                      <TableCell>
+                        <RealEstateStatusBadge status={r.status} />
+                      </TableCell>
+                      <TableCell>
+                        <div className="space-y-1">
+                          {pct !== null && Number.isFinite(pct) ? (
+                            <Progress
+                              value={Math.min(100, pct)}
+                              aria-label={`${pct} % subscribed`}
+                              className="h-1.5 bg-muted [&>div]:bg-emerald-600"
+                            />
+                          ) : null}
+                          <p className="text-xs text-muted-foreground tabular">
+                            {formatNumber(sold)} /{" "}
+                            {formatNumber(c?.total_shares)} ·{" "}
+                            {pct !== null && Number.isFinite(pct)
+                              ? `${formatNumber(pct, 2)} %`
+                              : "unavailable"}
+                          </p>
+                        </div>
+                      </TableCell>
+                      <TableCell className="whitespace-nowrap pr-5 text-right font-medium tabular">
+                        {recordedValuation(
+                          c?.total_valuation,
+                          c?.currency_code,
+                        )}
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
+              </TableBody>
+            </Table>
+          </div>
+        </>
       )}
     </Panel>
   );

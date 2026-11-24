@@ -38,7 +38,7 @@ export const ORDER_STATUS: Record<OrderStatusCode, StatusMeta> = {
   DELIVERY_FAILED: {
     label: "Delivery failed",
     tone: "danger",
-    description: "On-chain delivery failed. Operations have been notified.",
+    description: "On-chain delivery failed.",
   },
   CANCELLED: {
     label: "Cancelled",

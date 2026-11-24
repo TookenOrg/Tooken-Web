@@ -39,7 +39,13 @@ export function OnChainIdentityPanel({
             disabled={status.isFetching}
             aria-label="Refresh on-chain status"
           >
-            <RefreshCw className={status.isFetching ? "animate-spin" : ""} />
+            <RefreshCw
+              className={
+                status.isFetching
+                  ? "animate-spin motion-reduce:animate-none"
+                  : ""
+              }
+            />
           </Button>
         }
       />

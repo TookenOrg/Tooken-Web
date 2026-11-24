@@ -2,6 +2,7 @@
 
 import { useMutation } from "@tanstack/react-query";
 import { BadgeCheck, Fingerprint } from "lucide-react";
+import Link from "next/link";
 import { useState } from "react";
 import { ConfirmDialog } from "@/components/app/confirm-dialog";
 import { FormField } from "@/components/app/form-field";
@@ -18,6 +19,7 @@ import {
 import { contractApi } from "@/lib/api/endpoints";
 import type { AddClaimRequest, CreateIdentityRequest } from "@/lib/api/types";
 import { COUNTRIES, countryName, KYC_CLAIM_TOPIC } from "@/lib/reference";
+import { FieldMessages, fieldDescription } from "./field-messages";
 import { ResultPanel } from "./result-panel";
 
 function parsePositiveInt(value: string): number | null {
@@ -30,9 +32,16 @@ export function IdentityConsole() {
   return (
     <div className="space-y-6">
       <p className="text-sm text-muted-foreground">
-        Low-level operations. In the normal flow, approving a KYC file and
-        running <span className="font-medium text-ink">Sync on-chain</span> from
-        the compliance screen performs both steps for you.
+        Use the{" "}
+        <Link
+          href="/admin/compliance"
+          className="font-medium text-ink underline underline-offset-4"
+        >
+          compliance workflow
+        </Link>{" "}
+        to approve a KYC file and sync it on-chain. These low-level operations
+        are for exceptional cases after independently checking the account and
+        its on-chain state.
       </p>
       <div className="grid gap-6 lg:grid-cols-2">
         <CreateIdentityForm />
@@ -81,29 +90,33 @@ function CreateIdentityForm() {
       <PanelBody className="space-y-4">
         <form className="space-y-4" onSubmit={submit} noValidate>
           <div className="grid gap-4 sm:grid-cols-2">
-            <FormField
-              label="User ID"
-              htmlFor="identity-user"
-              required
-              error={errors.userId}
-            >
+            <FormField label="User ID" htmlFor="identity-user" required>
               <Input
                 id="identity-user"
                 inputMode="numeric"
                 value={userId}
                 onChange={(e) => setUserId(e.target.value)}
                 placeholder="e.g. 3"
+                required
                 aria-invalid={!!errors.userId}
+                aria-describedby={fieldDescription(
+                  "identity-user",
+                  errors.userId,
+                )}
               />
+              <FieldMessages id="identity-user" error={errors.userId} />
             </FormField>
             <FormField
               label="Country of residence"
               htmlFor="identity-country"
               required
-              hint={`ISO 3166-1 numeric ${numeric ?? "—"}`}
             >
-              <Select value={country} onValueChange={setCountry}>
-                <SelectTrigger id="identity-country" className="w-full">
+              <Select value={country} onValueChange={setCountry} required>
+                <SelectTrigger
+                  id="identity-country"
+                  className="w-full"
+                  aria-describedby="identity-country-hint"
+                >
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -114,6 +127,10 @@ function CreateIdentityForm() {
                   ))}
                 </SelectContent>
               </Select>
+              <FieldMessages
+                id="identity-country"
+                hint={`ISO 3166-1 numeric ${numeric ?? "—"}`}
+              />
             </FormField>
           </div>
           <Button type="submit" disabled={mutation.isPending}>
@@ -121,8 +138,9 @@ function CreateIdentityForm() {
           </Button>
         </form>
         <ResultPanel
-          data={mutation.isSuccess ? mutation.data : undefined}
+          data={mutation.isSuccess ? (mutation.data ?? null) : undefined}
           error={mutation.error}
+          endpoint="POST /contract/identity"
         />
       </PanelBody>
       <ConfirmDialog
@@ -183,35 +201,38 @@ function AddClaimForm() {
       <PanelBody className="space-y-4">
         <form className="space-y-4" onSubmit={submit} noValidate>
           <div className="grid gap-4 sm:grid-cols-2">
-            <FormField
-              label="User ID"
-              htmlFor="claim-user"
-              required
-              error={errors.userId}
-            >
+            <FormField label="User ID" htmlFor="claim-user" required>
               <Input
                 id="claim-user"
                 inputMode="numeric"
                 value={userId}
                 onChange={(e) => setUserId(e.target.value)}
                 placeholder="e.g. 3"
+                required
                 aria-invalid={!!errors.userId}
+                aria-describedby={fieldDescription("claim-user", errors.userId)}
               />
+              <FieldMessages id="claim-user" error={errors.userId} />
             </FormField>
-            <FormField
-              label="Claim topic"
-              htmlFor="claim-topic"
-              required
-              error={errors.topic}
-              hint={`${KYC_CLAIM_TOPIC} = KYC (required by the platform suite)`}
-            >
+            <FormField label="Claim topic" htmlFor="claim-topic" required>
               <Input
                 id="claim-topic"
                 inputMode="numeric"
                 value={topic}
                 onChange={(e) => setTopic(e.target.value)}
                 className="tabular"
+                required
                 aria-invalid={!!errors.topic}
+                aria-describedby={fieldDescription(
+                  "claim-topic",
+                  errors.topic,
+                  true,
+                )}
+              />
+              <FieldMessages
+                id="claim-topic"
+                error={errors.topic}
+                hint={`${KYC_CLAIM_TOPIC} = KYC (required by the platform suite)`}
               />
             </FormField>
           </div>
@@ -220,8 +241,9 @@ function AddClaimForm() {
           </Button>
         </form>
         <ResultPanel
-          data={mutation.isSuccess ? mutation.data : undefined}
+          data={mutation.isSuccess ? (mutation.data ?? null) : undefined}
           error={mutation.error}
+          endpoint="POST /contract/identity/claims/add"
         />
       </PanelBody>
       <ConfirmDialog

@@ -1,239 +1,71 @@
 "use client";
 
-import {
-  ArrowRight,
-  BadgeCheck,
-  Banknote,
-  Building2,
-  FileBarChart,
-  Fingerprint,
-  KeyRound,
-  Landmark,
-  Network,
-  ScrollText,
-  ShieldCheck,
-  Vault,
-} from "lucide-react";
+import { ArrowDown, ArrowRight, ArrowUpRight } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { ImageWithLoader } from "@/components/app/image-with-loader";
 import {
-  fundingPercent,
+  estateCover,
+  estateLocation,
   RealEstateCard,
 } from "@/components/app/real-estate-card";
 import { EmptyState, ErrorState } from "@/components/app/states";
+import { RealEstateStatusBadge } from "@/components/app/status-badges";
+import { PageLoader } from "@/components/app/tooken-loader";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useRealEstates } from "@/lib/api/hooks";
-import type { RealEstateSummary } from "@/lib/api/types";
-import {
-  addDecimal,
-  formatMoney,
-  formatNumber,
-  formatPercent,
-} from "@/lib/format";
+import { homeFor } from "@/lib/auth/routes";
+import { useSession } from "@/lib/auth/session-context";
+import { addDecimal, formatMoney, formatNumber } from "@/lib/format";
+import { cn } from "@/lib/utils";
 
+const DEFAULT_HERO_IMAGE = "/hero-default.jpg";
+const SLIDE_DURATION_MS = 8000;
 const LISTED = ["published", "fundraising", "funded", "closed"];
-
-function computeMetrics(estates: RealEstateSummary[]) {
-  const listed = estates.filter((e) => LISTED.includes(e.status ?? ""));
-  const byCurrency = new Map<string, string>();
-  for (const e of listed) {
-    const v = e.configuration?.total_valuation;
-    if (!v) continue;
-    const ccy = e.configuration?.currency_code || "EUR";
-    try {
-      byCurrency.set(ccy, addDecimal(byCurrency.get(ccy) ?? "0", v));
-    } catch {
-      // Ignore malformed amounts rather than breaking the whole strip.
-    }
-  }
-  // With several currencies, report the largest book only.
-  const [currency, valuation] = [...byCurrency.entries()].sort(
-    (a, b) => Number(b[1]) - Number(a[1]),
-  )[0] ?? ["EUR", null];
-  const yields = listed
-    .map((e) => e.configuration?.yield)
-    .filter((y): y is number => typeof y === "number" && Number.isFinite(y));
-  const avgYield = yields.length
-    ? yields.reduce((s, y) => s + y, 0) / yields.length
-    : null;
-  return {
-    count: listed.length,
-    open: listed.filter((e) => e.status === "fundraising").length,
-    valuation,
-    currency,
-    mixedCurrencies: byCurrency.size > 1,
-    avgYield,
-  };
-}
-
 const STEPS = [
   {
-    icon: Building2,
-    title: "Originate",
-    text: "Onboard the issuing vehicle and the asset: valuation, specification, documentation and share structure.",
+    title: "Understand the asset.",
+    text: "Explore the underlying asset and the available offering information. Tokens represent shares; the rights attached to those shares depend on the issuing vehicle and its legal documents.",
   },
   {
-    icon: KeyRound,
-    title: "Tokenize",
-    text: "Deploy an ERC-3643 security token with its compliance module and identity registry in a single step.",
+    title: "Make it yours.",
+    text: "Create your account, complete identity verification and subscribe to an available offering.",
   },
   {
-    icon: Network,
-    title: "Distribute",
-    text: "Open subscriptions to verified investors. Eligibility is checked on-chain before every transfer.",
-  },
-  {
-    icon: Banknote,
-    title: "Settle",
-    text: "Confirm the cash leg, then tokens are delivered automatically with a full audit trail.",
+    title: "Keep a clear view.",
+    text: "Follow your orders, payment instructions and delivered shares in your investor workspace. Distributions depend on the offering and are not guaranteed.",
   },
 ];
-
-const PILLARS = [
-  {
-    icon: ScrollText,
-    title: "Compliance by design",
-    text: "Transfer rules, investor caps and jurisdiction restrictions are enforced by the token itself, not by after-the-fact controls.",
-  },
-  {
-    icon: Fingerprint,
-    title: "On-chain identity & KYC",
-    text: "Each investor holds an ONCHAINID with claims signed by your compliance team. Revocation is immediate and auditable.",
-  },
-  {
-    icon: Vault,
-    title: "Custody & control",
-    text: "Issuer-controlled agent roles allow forced transfers, freezes and recovery in line with your regulatory obligations.",
-  },
-  {
-    icon: FileBarChart,
-    title: "Reporting",
-    text: "Real-time cap table, order book and settlement history ready for investors, auditors and supervisors.",
-  },
-];
-
-const TRUST = [
-  { icon: ShieldCheck, label: "ERC-3643 / T-REX standard" },
-  { icon: BadgeCheck, label: "KYC / AML workflows" },
-  { icon: Landmark, label: "Regulated issuing vehicles" },
-  { icon: KeyRound, label: "Idempotent, audited settlement" },
-];
-
-function Metric({
-  label,
-  value,
-  hint,
-  loading,
-}: {
-  label: string;
-  value: React.ReactNode;
-  hint?: React.ReactNode;
-  loading?: boolean;
-}) {
-  return (
-    <div className="px-5 py-6 sm:px-8">
-      <dt className="text-xs font-medium uppercase tracking-wider text-white/50">
-        {label}
-      </dt>
-      <dd className="mt-2 text-2xl font-semibold text-white tabular sm:text-3xl">
-        {loading ? <Skeleton className="h-8 w-28 bg-white/10" /> : value}
-      </dd>
-      {hint && !loading ? (
-        <dd className="mt-1 text-xs text-white/45">{hint}</dd>
-      ) : null}
-    </div>
-  );
-}
-
-function HeroVisual({ estate }: { estate?: RealEstateSummary }) {
-  const cfg = estate?.configuration;
-  const funded = estate ? fundingPercent(estate) : null;
-  return (
-    <div className="relative mx-auto w-full max-w-md">
-      <Image
-        src="/tooken-icon-transparent.svg"
-        alt=""
-        width={480}
-        height={480}
-        priority
-        className="animate-float-slower pointer-events-none absolute -top-16 -right-16 w-72 opacity-10"
-      />
-      <div className="animate-float-slow relative rounded-xl border border-white/10 bg-white/[0.04] p-6 shadow-2xl backdrop-blur">
-        <div className="flex items-center justify-between">
-          <span className="text-xs font-medium uppercase tracking-wider text-white/50">
-            Security token
-          </span>
-          <span className="rounded border border-signal/30 bg-signal/10 px-2 py-0.5 font-mono text-[11px] text-signal">
-            ERC-3643
-          </span>
-        </div>
-        <p className="mt-4 text-lg font-semibold text-white">
-          {estate?.title ?? "Prime residential, Luxembourg"}
-        </p>
-        <p className="mt-1 font-mono text-xs text-white/40">
-          {estate?.contract_address
-            ? `${estate.contract_address.slice(0, 10)}…${estate.contract_address.slice(-6)}`
-            : "0x0000…tokenized"}
-        </p>
-        <dl className="mt-6 grid grid-cols-3 gap-4 border-t border-white/10 pt-5">
-          <div>
-            <dt className="text-[11px] text-white/45">Per share</dt>
-            <dd className="mt-1 text-sm font-semibold text-white tabular">
-              {formatMoney(cfg?.price_per_share ?? 250, cfg?.currency_code)}
-            </dd>
-          </div>
-          <div>
-            <dt className="text-[11px] text-white/45">Yield</dt>
-            <dd className="mt-1 text-sm font-semibold text-emerald-300 tabular">
-              {formatPercent(cfg?.yield ?? 4.8)}
-            </dd>
-          </div>
-          <div>
-            <dt className="text-[11px] text-white/45">Shares</dt>
-            <dd className="mt-1 text-sm font-semibold text-white tabular">
-              {formatNumber(cfg?.total_shares ?? 10000)}
-            </dd>
-          </div>
-        </dl>
-        <div className="mt-5">
-          <div className="flex justify-between text-[11px] text-white/45">
-            <span>Subscribed</span>
-            <span className="tabular">
-              {formatPercent(funded ?? 0, funded && funded < 1 ? 1 : 0)}
-            </span>
-          </div>
-          <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-white/10">
-            <div
-              className="h-full rounded-full bg-brand"
-              style={{
-                width: `${Math.max(funded ?? 0, funded ? 2 : 0)}%`,
-              }}
-            />
-          </div>
-        </div>
-      </div>
-      <div className="relative -mt-4 ml-8 flex items-center gap-3 rounded-lg border border-white/10 bg-ink-2 px-4 py-3 shadow-xl">
-        <span className="flex size-8 items-center justify-center rounded-full bg-emerald-500/15 text-emerald-300">
-          <BadgeCheck className="size-4" aria-hidden />
-        </span>
-        <div className="text-xs">
-          <p className="font-medium text-white">
-            Investor eligibility verified
-          </p>
-          <p className="text-white/45">KYC claim · topic 7 · on-chain</p>
-        </div>
-      </div>
-    </div>
-  );
-}
 
 export default function LandingPage() {
+  const session = useSession();
+  const [introDone, setIntroDone] = useState(false);
+  const [introZooming, setIntroZooming] = useState(false);
+  const [slide, setSlide] = useState(0);
+  const [hovered, setHovered] = useState(false);
+  const [focused, setFocused] = useState(false);
+  const [reducedMotion, setReducedMotion] = useState(true);
+  const [visible, setVisible] = useState(true);
+  useEffect(() => {
+    const preference = window.matchMedia("(prefers-reduced-motion: reduce)");
+    const updateMotion = () => setReducedMotion(preference.matches);
+    const updateVisibility = () => setVisible(!document.hidden);
+    updateMotion();
+    updateVisibility();
+    const frame = window.requestAnimationFrame(() => setIntroZooming(true));
+    preference.addEventListener("change", updateMotion);
+    document.addEventListener("visibilitychange", updateVisibility);
+    return () => {
+      window.cancelAnimationFrame(frame);
+      preference.removeEventListener("change", updateMotion);
+      document.removeEventListener("visibilitychange", updateVisibility);
+    };
+  }, []);
   const { data, isLoading, isError, error, refetch } = useRealEstates();
   const estates = data ?? [];
-  const metrics = useMemo(() => computeMetrics(estates), [estates]);
-  const featured = useMemo(
+  const offerings = useMemo(
     () =>
       estates
         .filter((e) => e.status === "fundraising" || e.status === "published")
@@ -241,278 +73,429 @@ export default function LandingPage() {
           (a, b) =>
             Number(b.status === "fundraising") -
             Number(a.status === "fundraising"),
-        )
-        .slice(0, 3),
+        ),
     [estates],
   );
+  const featured = offerings.slice(0, 3);
+  const metrics = useMemo(() => {
+    const listed = estates.filter((e) => LISTED.includes(e.status ?? ""));
+    const byCurrency = new Map<string, string>();
+    let missingValuation = false;
+    for (const estate of listed) {
+      const value = estate.configuration?.total_valuation;
+      const currency = estate.configuration?.currency_code;
+      if (!value || !currency) {
+        missingValuation = true;
+        continue;
+      }
+      try {
+        byCurrency.set(
+          currency,
+          addDecimal(byCurrency.get(currency) ?? "0", value),
+        );
+      } catch {
+        missingValuation = true;
+      }
+    }
+    return {
+      count: listed.length,
+      open: listed.filter((e) => e.status === "fundraising").length,
+      valuations: [...byCurrency.entries()].sort(([a], [b]) =>
+        a.localeCompare(b),
+      ),
+      mixed: byCurrency.size > 1,
+      missingValuation,
+    };
+  }, [estates]);
+  const forSaleSlides = useMemo(
+    () =>
+      isLoading || isError
+        ? []
+        : estates.filter(
+            (estate) =>
+              estate.status === "fundraising" && Boolean(estateCover(estate)),
+          ),
+    [estates, isError, isLoading],
+  );
+  useEffect(() => {
+    if (introDone || !visible) return;
+    const timer = window.setTimeout(
+      () => setIntroDone(true),
+      SLIDE_DURATION_MS,
+    );
+    return () => window.clearTimeout(timer);
+  }, [introDone, visible]);
+  const showingOfferings = introDone && forSaleSlides.length > 0;
+  const activeSlide = forSaleSlides.length ? slide % forSaleSlides.length : 0;
+  const hero = showingOfferings ? (forSaleSlides[activeSlide] ?? null) : null;
+  const rotating =
+    showingOfferings &&
+    forSaleSlides.length > 1 &&
+    !hovered &&
+    !focused &&
+    !reducedMotion &&
+    visible;
+  const autoAdvancing = (!introDone && visible) || rotating;
+  useEffect(() => {
+    if (!rotating) return;
+    const timer = window.setTimeout(
+      () => setSlide((activeSlide + 1) % forSaleSlides.length),
+      SLIDE_DURATION_MS,
+    );
+    return () => window.clearTimeout(timer);
+  }, [rotating, activeSlide, forSaleSlides.length]);
 
   return (
     <>
-      {/* Hero */}
-      <section className="bg-animated-gradient-dark relative overflow-hidden text-white">
-        <div className="mx-auto grid max-w-7xl items-center gap-12 px-4 pt-16 pb-20 sm:px-6 lg:grid-cols-[1.15fr_1fr] lg:px-8 lg:pt-24 lg:pb-28">
-          <div className="animate-fade-up">
-            <p className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-white/70">
-              <span className="size-1.5 rounded-full bg-signal" aria-hidden />
-              Infrastructure for banks and asset managers
-            </p>
-            <h1 className="mt-6 text-4xl leading-[1.1] font-semibold sm:text-5xl lg:text-[3.4rem]">
-              Tokenize real estate under{" "}
-              <span className="text-brand">ERC-3643</span>, with compliance
-              built in.
-            </h1>
-            <p className="mt-6 max-w-xl text-base leading-relaxed text-white/65 sm:text-lg">
-              Issue, distribute and settle fractional interests in
-              income-producing property. Every holder is identified, every
-              transfer is checked, every settlement is recorded.
-            </p>
-            <div className="mt-10 flex flex-col gap-3 sm:flex-row">
-              <Button
-                asChild
-                size="lg"
-                className="bg-brand text-brand-foreground hover:bg-brand-light"
-              >
-                <Link href="/explore">
-                  Explore offerings <ArrowRight />
+      <section className="border-b border-border">
+        <div className="mx-auto max-w-7xl px-5 pt-10 sm:px-8 lg:pt-14">
+          <div className="grid items-center gap-10 pb-12 lg:grid-cols-[1.05fr_1fr] lg:gap-16 lg:pb-16">
+            <div className="py-2 lg:py-8">
+              <h1 className="max-w-2xl font-editorial text-[clamp(3.2rem,6.6vw,5.75rem)] leading-[0.98] font-normal tracking-[-0.055em] text-ink">
+                Real-world assets.
+                <br />
+                <em className="font-normal">Tokenized.</em>
+              </h1>
+              <p className="mt-7 max-w-md text-base leading-relaxed text-muted-foreground sm:text-lg">
+                Explore offerings based on real estate assets. Verify your
+                identity before subscribing, then follow your orders and
+                delivered shares in your investor workspace.
+              </p>
+              <div className="mt-8 flex flex-wrap items-center gap-x-7 gap-y-4">
+                <Button asChild size="lg" className="h-12 px-6">
+                  <Link href="/explore">
+                    Explore the offerings <ArrowUpRight />
+                  </Link>
+                </Button>
+                <Link
+                  href="#how-it-works"
+                  className="inline-flex items-center gap-2 text-sm text-ink underline underline-offset-4 hover:text-muted-foreground"
+                >
+                  How it works <ArrowDown className="size-3.5" aria-hidden />
                 </Link>
-              </Button>
-              <Button
-                asChild
-                size="lg"
-                variant="outline"
-                className="border-white/20 bg-transparent text-white hover:bg-white/10 hover:text-white"
-              >
-                <Link href="/sign-up">Request access</Link>
-              </Button>
+              </div>
+              <p className="mt-8 max-w-sm text-xs leading-relaxed text-muted-foreground">
+                Capital at risk. Returns are not guaranteed. Offering documents
+                are not currently available here.
+              </p>
             </div>
+            <figure
+              className="min-w-0"
+              aria-label="Featured assets"
+              aria-roledescription="carousel"
+              onMouseEnter={() => setHovered(true)}
+              onMouseLeave={() => setHovered(false)}
+              onFocusCapture={() => setFocused(true)}
+              onBlurCapture={(event) => {
+                if (!event.currentTarget.contains(event.relatedTarget))
+                  setFocused(false);
+              }}
+            >
+              <div className="relative aspect-[5/4] overflow-hidden bg-muted lg:aspect-[5/5.3]">
+                <div
+                  aria-hidden={Boolean(hero)}
+                  className={cn(
+                    "absolute inset-0 z-[2] transition-opacity duration-[1500ms] ease-in-out motion-reduce:transition-none",
+                    hero ? "pointer-events-none opacity-0" : "opacity-100",
+                  )}
+                >
+                  <Image
+                    src={DEFAULT_HERO_IMAGE}
+                    alt="Contemporary architectural facade"
+                    fill
+                    preload
+                    sizes="(min-width: 1024px) 50vw, 100vw"
+                    className={cn(
+                      "object-cover transition-transform duration-[8000ms] ease-out motion-reduce:transform-none motion-reduce:transition-none",
+                      !hero && introZooming ? "scale-[1.04]" : "scale-100",
+                    )}
+                  />
+                </div>
+                {forSaleSlides.map((estate, index) => {
+                  const isCurrent = Boolean(hero) && index === activeSlide;
+                  return (
+                    <div
+                      key={estate.id}
+                      aria-hidden={!isCurrent}
+                      className={cn(
+                        "absolute inset-0 transition-opacity duration-[1500ms] ease-in-out motion-reduce:transition-none",
+                        isCurrent
+                          ? "opacity-100"
+                          : "pointer-events-none opacity-0",
+                      )}
+                    >
+                      <ImageWithLoader
+                        src={estateCover(estate) as string}
+                        alt={estate.title || "Featured asset"}
+                        fill
+                        sizes="(min-width: 1024px) 50vw, 100vw"
+                        className={cn(
+                          "object-cover transition-transform duration-[8000ms] ease-out motion-reduce:transform-none motion-reduce:transition-none",
+                          isCurrent ? "scale-[1.04]" : "scale-100",
+                        )}
+                        loading="eager"
+                        loaderSize={44}
+                      />
+                    </div>
+                  );
+                })}
+                {hero ? (
+                  <div className="absolute top-4 left-4 z-10">
+                    <RealEstateStatusBadge status={hero.status} />
+                  </div>
+                ) : null}
+                <span className="absolute right-4 bottom-4 z-10 bg-background px-2.5 py-1.5 font-mono text-[10px] text-ink">
+                  {hero ? "ASSET SPOTLIGHT" : "RWA / REAL-WORLD ASSETS"}
+                </span>
+              </div>
+              <figcaption
+                aria-live={autoAdvancing ? "off" : "polite"}
+                aria-atomic="true"
+                className="flex min-h-20 items-start justify-between gap-4 border-b border-border py-4"
+              >
+                <div>
+                  <p className="text-sm font-medium text-ink">
+                    {hero
+                      ? hero.title
+                      : "One standard. A wider asset universe."}
+                  </p>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    {hero
+                      ? estateLocation(hero) || "View offering details"
+                      : "Platform overview. Not an investment offering."}
+                  </p>
+                </div>
+                {hero ? (
+                  <Link
+                    href={`/real-estate/${hero.id}`}
+                    aria-label={`View ${hero.title || "featured asset"}`}
+                    className="rounded-sm p-2 text-ink hover:bg-muted"
+                  >
+                    <ArrowUpRight className="size-5" />
+                  </Link>
+                ) : null}
+              </figcaption>
+            </figure>
           </div>
-          <div className="hidden lg:block">
-            <HeroVisual estate={featured[0]} />
-          </div>
-        </div>
-
-        {/* Live metrics */}
-        <div className="border-t border-white/10 bg-ink-3/60">
-          <dl className="mx-auto grid max-w-7xl grid-cols-1 divide-y divide-white/10 sm:grid-cols-3 sm:divide-x sm:divide-y-0">
-            <Metric
-              label="Listed offerings"
-              loading={isLoading}
-              value={isError ? "—" : formatNumber(metrics.count)}
-              hint={
-                isError
-                  ? "Live data unavailable"
-                  : `${formatNumber(metrics.open)} open for subscription`
-              }
-            />
-            <Metric
-              label="Assets tokenized"
-              loading={isLoading}
-              value={
-                metrics.valuation
-                  ? formatMoney(metrics.valuation, metrics.currency, {
-                      compact: true,
-                    })
-                  : "—"
-              }
-              hint={
-                metrics.mixedCurrencies
-                  ? `Total valuation, ${metrics.currency} book`
-                  : "Total valuation"
-              }
-            />
-            <Metric
-              label="Average target yield"
-              loading={isLoading}
-              value={
-                metrics.avgYield !== null
-                  ? formatPercent(metrics.avgYield)
-                  : "—"
-              }
-              hint="Simple average across listed offerings"
-            />
+          <dl className="grid grid-cols-1 divide-y divide-border border-t border-border sm:grid-cols-3 sm:divide-x sm:divide-y-0">
+            {[
+              {
+                label: "Listed offerings",
+                value: formatNumber(metrics.count),
+              },
+              {
+                label: metrics.missingValuation
+                  ? "Known listed asset values"
+                  : metrics.mixed
+                    ? "Listed asset values by currency"
+                    : "Total listed asset value",
+                value: metrics.valuations.length
+                  ? metrics.valuations.map(([currency, value]) => (
+                      <span key={currency} className="block">
+                        {formatMoney(value, currency, { compact: true })}
+                      </span>
+                    ))
+                  : "—",
+              },
+              {
+                label: "Open for subscription",
+                value: formatNumber(metrics.open),
+              },
+            ].map(({ label, value }) => (
+              <div key={label} className="py-5 sm:px-6 sm:first:pl-0 lg:py-7">
+                <dt className="text-xs text-muted-foreground">{label}</dt>
+                <dd className="mt-2 text-3xl tracking-tight text-ink tabular">
+                  {isLoading ? (
+                    <Skeleton className="h-9 w-24" />
+                  ) : isError ? (
+                    "—"
+                  ) : (
+                    value
+                  )}
+                </dd>
+              </div>
+            ))}
           </dl>
         </div>
       </section>
 
-      {/* Featured */}
-      <section className="bg-background">
-        <div className="mx-auto max-w-7xl px-4 py-16 sm:px-6 lg:px-8 lg:py-20">
-          <div className="flex flex-wrap items-end justify-between gap-4">
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-amber-600">
-                Marketplace
-              </p>
-              <h2 className="mt-2 text-2xl font-semibold text-ink sm:text-3xl">
-                Featured offerings
-              </h2>
+      <section className="mx-auto max-w-7xl px-5 py-16 sm:px-8 lg:py-24">
+        <div className="flex flex-wrap items-end justify-between gap-5">
+          <div>
+            <p className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
+              01 — The offerings
+            </p>
+            <h2 className="mt-3 font-editorial text-4xl font-normal tracking-tight text-ink sm:text-5xl">
+              Explore the underlying assets.
+            </h2>
+          </div>
+          <Link
+            href="/explore"
+            className="inline-flex items-center gap-3 border-b border-ink pb-1 text-sm text-ink hover:text-muted-foreground"
+          >
+            All offerings <ArrowUpRight className="size-4" aria-hidden />
+          </Link>
+        </div>
+        <div className="mt-9">
+          {isLoading ? (
+            <PageLoader
+              label="Loading offerings…"
+              className="min-h-72 rounded-sm border border-border bg-card/60"
+            />
+          ) : isError ? (
+            <ErrorState
+              error={error}
+              title="Unable to load offerings"
+              onRetry={() => refetch()}
+            />
+          ) : featured.length ? (
+            <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+              {featured.map((estate) => (
+                <RealEstateCard key={estate.id} estate={estate} />
+              ))}
             </div>
-            <Button asChild variant="outline">
-              <Link href="/explore">
-                View all offerings <ArrowRight />
-              </Link>
-            </Button>
-          </div>
-          <div className="mt-8">
-            {isLoading ? (
-              <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
-                {["a", "b", "c"].map((k) => (
-                  <Skeleton key={k} className="h-96 rounded-lg" />
-                ))}
-              </div>
-            ) : isError ? (
-              <div className="rounded-lg border border-border bg-card">
-                <ErrorState
-                  error={error}
-                  title="Unable to load offerings"
-                  onRetry={() => refetch()}
-                />
-              </div>
-            ) : featured.length === 0 ? (
-              <div className="rounded-lg border border-dashed border-border bg-card">
-                <EmptyState
-                  icon={Building2}
-                  title="No offering open at the moment"
-                  description="New tokenized assets are published regularly. Create an account to be notified."
-                />
-              </div>
-            ) : (
-              <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
-                {featured.map((e) => (
-                  <RealEstateCard key={e.id} estate={e} />
-                ))}
-              </div>
-            )}
-          </div>
+          ) : (
+            <div className="border-y border-border">
+              <EmptyState
+                title="The next chapter is taking shape."
+                description="No offerings are open at the moment. Available assets will appear here when published."
+              />
+            </div>
+          )}
         </div>
       </section>
 
-      {/* How it works */}
       <section
         id="how-it-works"
-        className="scroll-mt-16 border-y border-border bg-white"
+        className="scroll-mt-24 border-y border-border bg-white"
       >
-        <div className="mx-auto max-w-7xl px-4 py-16 sm:px-6 lg:px-8 lg:py-20">
-          <div className="max-w-2xl">
-            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-amber-600">
-              How it works
+        <div className="mx-auto grid max-w-7xl gap-10 px-5 py-16 sm:px-8 lg:grid-cols-[0.9fr_1.1fr] lg:gap-24 lg:py-24">
+          <div>
+            <p className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
+              02 — A clearer path
             </p>
-            <h2 className="mt-2 text-2xl font-semibold text-ink sm:text-3xl">
-              From asset to settled security token in four steps
+            <h2 className="mt-4 max-w-md font-editorial text-4xl leading-[1.1] font-normal tracking-tight text-ink sm:text-5xl">
+              From an asset
+              <br />
+              to your portfolio.
             </h2>
-            <p className="mt-3 text-muted-foreground">
-              One workflow covers the full lifecycle, from the issuing vehicle
-              to delivery of tokens in the investor&apos;s wallet.
+            <p className="mt-5 max-w-sm text-sm leading-relaxed text-muted-foreground">
+              Digital ownership should make the process easier to follow. Not
+              harder to understand.
             </p>
+            {session.ready ? (
+              <Link
+                href={
+                  session.isAuthenticated ? homeFor(session.role) : "/sign-up"
+                }
+                className="mt-7 inline-flex items-center gap-3 text-sm font-medium text-ink underline underline-offset-4"
+              >
+                {session.isAuthenticated
+                  ? session.isStaff
+                    ? "Back office"
+                    : "Dashboard"
+                  : "Open an account"}{" "}
+                <ArrowRight className="size-4" aria-hidden />
+              </Link>
+            ) : null}
           </div>
-          <ol className="mt-12 grid gap-px overflow-hidden rounded-lg border border-border bg-border md:grid-cols-2 lg:grid-cols-4">
-            {STEPS.map(({ icon: Icon, title, text }, i) => (
-              <li key={title} className="bg-white p-6">
-                <div className="flex items-center justify-between">
-                  <span className="flex size-10 items-center justify-center rounded-md bg-ink text-brand">
-                    <Icon className="size-5" aria-hidden />
-                  </span>
-                  <span className="font-mono text-xs text-muted-foreground">
-                    0{i + 1}
-                  </span>
+          <ol className="divide-y divide-border">
+            {STEPS.map((step, index) => (
+              <li
+                key={step.title}
+                className="flex gap-6 py-7 first:pt-0 last:pb-0"
+              >
+                <span className="pt-1 font-mono text-xs text-amber-700">
+                  0{index + 1}
+                </span>
+                <div>
+                  <h3 className="text-lg font-medium text-ink">{step.title}</h3>
+                  <p className="mt-2 max-w-md text-sm leading-relaxed text-muted-foreground">
+                    {step.text}
+                  </p>
                 </div>
-                <h3 className="mt-5 text-lg font-semibold text-ink">{title}</h3>
-                <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
-                  {text}
-                </p>
               </li>
             ))}
           </ol>
         </div>
       </section>
 
-      {/* Institutions */}
-      <section id="institutions" className="scroll-mt-16 bg-background">
-        <div className="mx-auto grid max-w-7xl gap-12 px-4 py-16 sm:px-6 lg:grid-cols-[1fr_1.4fr] lg:px-8 lg:py-20">
+      <section
+        id="institutions"
+        className="scroll-mt-24 border-b border-border bg-background text-ink"
+      >
+        <div className="mx-auto grid max-w-7xl gap-8 px-5 py-12 sm:px-8 lg:grid-cols-2 lg:gap-16">
           <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-amber-600">
-              For institutions
+            <p className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
+              03 — For the people behind the assets
             </p>
-            <h2 className="mt-2 text-2xl font-semibold text-ink sm:text-3xl">
-              Built for banks, asset managers and fund administrators
+            <h2 className="mt-3 font-editorial text-3xl font-normal tracking-tight sm:text-4xl">
+              For issuers &amp; asset managers
             </h2>
-            <p className="mt-4 text-muted-foreground">
-              Tooken gives your teams a back office to structure offerings,
-              review investor files and supervise settlement, while the ERC-3643
-              standard guarantees that only eligible investors can ever hold
-              your tokens.
+            <p className="mt-4 max-w-md text-sm leading-relaxed text-muted-foreground">
+              Manage offerings and the work around investor verification and
+              subscription orders in the back office.
             </p>
-            <Button asChild className="mt-8 bg-ink text-white hover:bg-ink-2">
-              <Link href="/sign-up">
-                Talk to our team <ArrowRight />
-              </Link>
-            </Button>
           </div>
-          <div className="grid gap-5 sm:grid-cols-2">
-            {PILLARS.map(({ icon: Icon, title, text }) => (
+          <dl className="divide-y divide-border border-y border-border">
+            {[
+              [
+                "Offering setup",
+                "Configure assets, shares and issuer details.",
+              ],
+              [
+                "Investor verification",
+                "Review verification files and registration status.",
+              ],
+              [
+                "Orders & settlement",
+                "Track subscriptions and their settlement.",
+              ],
+            ].map(([label, text]) => (
               <div
-                key={title}
-                className="rounded-lg border border-border bg-card p-6 shadow-[0_1px_2px_rgb(16_24_40/0.04)]"
+                key={label}
+                className="grid gap-1 py-3 sm:grid-cols-[160px_1fr] sm:gap-4"
               >
-                <span className="flex size-9 items-center justify-center rounded-md bg-amber-50 text-amber-600">
-                  <Icon className="size-4" aria-hidden />
-                </span>
-                <h3 className="mt-4 text-base font-semibold text-ink">
-                  {title}
-                </h3>
-                <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
-                  {text}
-                </p>
+                <dt className="text-sm font-medium">{label}</dt>
+                <dd className="text-sm text-muted-foreground">{text}</dd>
               </div>
             ))}
-          </div>
+          </dl>
         </div>
       </section>
 
-      {/* Trust band */}
-      <section className="border-y border-white/5 bg-ink-2 text-white">
-        <ul className="mx-auto grid max-w-7xl grid-cols-2 gap-6 px-4 py-8 sm:px-6 lg:grid-cols-4 lg:px-8">
-          {TRUST.map(({ icon: Icon, label }) => (
-            <li
-              key={label}
-              className="flex items-center gap-3 text-sm text-white/70"
-            >
-              <Icon className="size-5 shrink-0 text-signal" aria-hidden />
-              {label}
-            </li>
-          ))}
-        </ul>
-      </section>
-
-      {/* Final CTA */}
-      <section className="bg-ink text-white">
-        <div className="mx-auto flex max-w-7xl flex-col items-start gap-8 px-4 py-16 sm:px-6 lg:flex-row lg:items-center lg:justify-between lg:px-8 lg:py-20">
-          <div className="max-w-2xl">
-            <h2 className="text-2xl font-semibold sm:text-3xl">
-              Bring your next real estate offering on-chain.
-            </h2>
-            <p className="mt-3 text-white/60">
-              Open an account to access the marketplace, or contact us to
-              onboard your institution as an issuer.
+      <section className="border-b border-border">
+        <div className="mx-auto grid max-w-7xl gap-4 px-5 py-10 sm:px-8 lg:grid-cols-2 lg:gap-16">
+          <h2 className="text-lg font-medium text-ink">About ERC-3643</h2>
+          <div className="space-y-3 text-sm leading-relaxed text-muted-foreground">
+            <p>
+              ERC-3643 supports permissioned tokens with identity and transfer
+              checks. These technical controls do not establish financial
+              returns or legal rights.
+            </p>
+            <p>
+              Real estate is the offering category available today. Broader
+              real-world asset tokenization remains a direction, with each
+              category requiring its own structure and offering terms.
             </p>
           </div>
-          <div className="flex flex-col gap-3 sm:flex-row">
-            <Button
-              asChild
-              size="lg"
-              className="bg-brand text-brand-foreground hover:bg-brand-light"
-            >
-              <Link href="/sign-up">Request access</Link>
-            </Button>
-            <Button
-              asChild
-              size="lg"
-              variant="outline"
-              className="border-white/20 bg-transparent text-white hover:bg-white/10 hover:text-white"
-            >
-              <Link href="/explore">Explore offerings</Link>
-            </Button>
-          </div>
         </div>
+      </section>
+
+      <section className="mx-auto flex max-w-7xl flex-col items-start justify-between gap-8 px-5 py-14 sm:px-8 md:flex-row md:items-center lg:py-20">
+        <div>
+          <p className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
+            Your next perspective
+          </p>
+          <h2 className="mt-3 font-editorial text-4xl font-normal tracking-tight text-ink sm:text-5xl">
+            Start with the asset.
+          </h2>
+        </div>
+        <Button asChild size="lg" className="h-12 px-6">
+          <Link href="/explore">
+            Explore the marketplace <ArrowUpRight />
+          </Link>
+        </Button>
       </section>
     </>
   );

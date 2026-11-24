@@ -1,11 +1,11 @@
 import { Building2, MapPin } from "lucide-react";
-import Image from "next/image";
 import Link from "next/link";
 import type { RealEstate, RealEstateSummary } from "@/lib/api/types";
-import { formatMoney, formatNumber, formatPercent } from "@/lib/format";
+import { formatNumber, formatPercent, formatRecordedMoney } from "@/lib/format";
 import { countryName, estateTypeLabel } from "@/lib/reference";
 import { cn } from "@/lib/utils";
 import { FavoriteButton } from "./favorite-button";
+import { ImageWithLoader } from "./image-with-loader";
 import { RealEstateStatusBadge } from "./status-badges";
 
 type Estate = RealEstateSummary | RealEstate;
@@ -66,7 +66,7 @@ function Metric({
       </dt>
       <dd
         className={cn(
-          "mt-0.5 truncate text-sm font-semibold text-ink tabular",
+          "mt-0.5 break-words text-sm font-semibold text-ink tabular",
           emphasis && "text-emerald-700",
         )}
       >
@@ -94,7 +94,7 @@ export function RealEstateCard({
 }) {
   const cover = estateCover(estate);
   const cfg = estate.configuration;
-  const currency = cfg?.currency_code || "EUR";
+  const currency = cfg?.currency_code;
   const funded = fundingPercent(estate);
   const location = estateLocation(estate);
   const link = href ?? `/real-estate/${estate.id}`;
@@ -104,19 +104,20 @@ export function RealEstateCard({
   return (
     <article
       className={cn(
-        "group relative flex overflow-hidden rounded-lg border border-border bg-card shadow-[0_1px_2px_rgb(16_24_40/0.04)] transition hover:border-ink/20 hover:shadow-md focus-within:ring-2 focus-within:ring-ring",
+        "group relative flex overflow-hidden rounded-sm border border-border bg-card transition-colors hover:border-ink/35 focus-within:ring-2 focus-within:ring-ring",
         list ? "flex-col sm:flex-row" : "flex-col",
         className,
       )}
     >
       <div
         className={cn(
-          "relative shrink-0 overflow-hidden bg-ink",
+          "relative shrink-0 overflow-hidden",
+          cover ? "bg-muted" : "bg-ink",
           list ? "aspect-[16/9] sm:aspect-auto sm:w-64" : "aspect-[16/10]",
         )}
       >
         {cover ? (
-          <Image
+          <ImageWithLoader
             src={cover}
             alt=""
             fill
@@ -126,14 +127,19 @@ export function RealEstateCard({
                 ? "(min-width: 640px) 256px, 100vw"
                 : "(min-width: 1280px) 400px, (min-width: 640px) 50vw, 100vw"
             }
-            className="object-cover transition duration-500 group-hover:scale-[1.03]"
+            className="object-cover transition duration-500 group-hover:scale-[1.03] motion-reduce:transition-none motion-reduce:group-hover:scale-100"
+            fallback={
+              <div className="flex size-full items-center justify-center bg-ink">
+                <Building2 className="size-10 text-white/25" aria-hidden />
+              </div>
+            }
           />
         ) : (
-          <div className="bg-animated-gradient-dark flex size-full items-center justify-center">
+          <div className="flex size-full items-center justify-center bg-ink">
             <Building2 className="size-10 text-white/25" aria-hidden />
           </div>
         )}
-        <div className="absolute top-3 left-3">
+        <div className="absolute top-3 left-3 z-10">
           <RealEstateStatusBadge status={estate.status} />
         </div>
         {showFavorite ? (
@@ -147,7 +153,7 @@ export function RealEstateCard({
         <p className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
           {estateTypeLabel(estate.estate_type, estate.estate_type_id)}
         </p>
-        <h3 className="mt-1 truncate text-base font-semibold text-ink">
+        <h3 className="mt-2 truncate text-lg font-medium tracking-tight text-ink">
           <Link
             href={link}
             className="after:absolute after:inset-0 focus-visible:outline-none"
@@ -169,7 +175,7 @@ export function RealEstateCard({
         >
           <Metric
             label="Per share"
-            value={formatMoney(cfg?.price_per_share, currency)}
+            value={formatRecordedMoney(cfg?.price_per_share, currency)}
           />
           <Metric
             label="Yield"
@@ -180,7 +186,7 @@ export function RealEstateCard({
           />
           <Metric
             label="Valuation"
-            value={formatMoney(cfg?.total_valuation, currency, {
+            value={formatRecordedMoney(cfg?.total_valuation, currency, {
               compact: true,
             })}
           />
@@ -201,7 +207,7 @@ export function RealEstateCard({
               </span>
             </div>
             <div
-              className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-muted"
+              className="mt-2 h-1 overflow-hidden bg-muted"
               role="progressbar"
               aria-label="Subscribed"
               aria-valuemin={0}
@@ -209,7 +215,7 @@ export function RealEstateCard({
               aria-valuenow={Math.round(funded)}
             >
               <div
-                className="h-full rounded-full bg-brand"
+                className="h-full bg-brand"
                 style={{ width: `${Math.max(funded, funded > 0 ? 1.5 : 0)}%` }}
               />
             </div>

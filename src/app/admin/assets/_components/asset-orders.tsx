@@ -16,7 +16,11 @@ import {
 } from "@/components/ui/table";
 import { useOrders } from "@/lib/api/hooks";
 import type { RealEstate } from "@/lib/api/types";
-import { formatDateTime, formatMoney, formatNumber } from "@/lib/format";
+import {
+  formatDateTime,
+  formatNumber,
+  formatRecordedMoney,
+} from "@/lib/format";
 import { subscriptionFill } from "./asset-metrics";
 
 export function AssetOrders({ asset }: { asset: RealEstate }) {
@@ -25,7 +29,8 @@ export function AssetOrders({ asset }: { asset: RealEstate }) {
     .filter((o) => o.realEstateId === asset.id)
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
   const total = asset.configuration?.total_shares;
-  const fill = subscriptionFill(rows, total);
+  const fill = orders.data ? subscriptionFill(rows, total) : null;
+  const totalAvailable = !!total && /^\d+$/.test(total) && BigInt(total) > 0n;
 
   return (
     <div className="space-y-6">
@@ -34,42 +39,62 @@ export function AssetOrders({ asset }: { asset: RealEstate }) {
           title="Subscription progress"
           description="Shares held by live orders (cancelled, expired and refunded orders excluded)."
         />
-        <PanelBody className="space-y-4">
-          <div className="flex flex-wrap items-end justify-between gap-2">
-            <p className="text-2xl font-semibold text-ink tabular">
-              {fill.percent} %
+        {orders.isLoading ? (
+          <PanelBody>
+            <p className="text-sm text-muted-foreground">
+              Loading subscription progress…
             </p>
-            <p className="text-sm text-muted-foreground tabular">
-              {formatNumber(fill.subscribed.toString())} / {formatNumber(total)}{" "}
-              shares
-            </p>
-          </div>
-          <Progress
-            value={Math.min(100, Number(fill.percent))}
-            aria-label="Subscription progress"
-            className="h-2.5 bg-muted [&>div]:bg-emerald-600"
+          </PanelBody>
+        ) : orders.isError || !fill ? (
+          <ErrorState
+            error={orders.error ?? new Error("Order information unavailable.")}
+            onRetry={() => orders.refetch()}
           />
-          <dl className="grid gap-4 text-sm sm:grid-cols-3">
-            <div>
-              <dt className="text-muted-foreground">Settled</dt>
-              <dd className="font-medium text-ink tabular">
-                {formatNumber(fill.settled.toString())} shares
-              </dd>
+        ) : (
+          <PanelBody className="space-y-4">
+            <div className="flex flex-wrap items-end justify-between gap-2">
+              <p className="text-2xl font-semibold text-ink tabular">
+                {totalAvailable ? `${fill.percent} %` : "—"}
+              </p>
+              <p className="text-sm text-muted-foreground tabular">
+                {formatNumber(fill.subscribed.toString())} /{" "}
+                {formatNumber(total)} shares
+              </p>
             </div>
-            <div>
-              <dt className="text-muted-foreground">Reserved, in progress</dt>
-              <dd className="font-medium text-ink tabular">
-                {formatNumber(fill.reserved.toString())} shares
-              </dd>
-            </div>
-            <div>
-              <dt className="text-muted-foreground">Live orders</dt>
-              <dd className="font-medium text-ink tabular">
-                {fill.orderCount}
-              </dd>
-            </div>
-          </dl>
-        </PanelBody>
+            {totalAvailable ? (
+              <Progress
+                value={Math.min(100, Number(fill.percent))}
+                aria-label="Subscription progress"
+                className="h-2.5 bg-muted [&>div]:bg-emerald-600"
+              />
+            ) : (
+              <p className="text-xs text-muted-foreground">
+                The total share count is unavailable, so the percentage cannot
+                be calculated.
+              </p>
+            )}
+            <dl className="grid gap-4 text-sm sm:grid-cols-3">
+              <div>
+                <dt className="text-muted-foreground">Settled</dt>
+                <dd className="font-medium text-ink tabular">
+                  {formatNumber(fill.settled.toString())} shares
+                </dd>
+              </div>
+              <div>
+                <dt className="text-muted-foreground">Reserved, in progress</dt>
+                <dd className="font-medium text-ink tabular">
+                  {formatNumber(fill.reserved.toString())} shares
+                </dd>
+              </div>
+              <div>
+                <dt className="text-muted-foreground">Live orders</dt>
+                <dd className="font-medium text-ink tabular">
+                  {fill.orderCount}
+                </dd>
+              </div>
+            </dl>
+          </PanelBody>
+        )}
       </Panel>
 
       <Panel>
@@ -79,8 +104,11 @@ export function AssetOrders({ asset }: { asset: RealEstate }) {
         />
         {orders.isLoading ? (
           <TableSkeleton rows={3} cols={6} />
-        ) : orders.isError ? (
-          <ErrorState error={orders.error} onRetry={() => orders.refetch()} />
+        ) : orders.isError || !orders.data ? (
+          <ErrorState
+            error={orders.error ?? new Error("Order information unavailable.")}
+            onRetry={() => orders.refetch()}
+          />
         ) : rows.length === 0 ? (
           <EmptyState
             icon={ReceiptText}
@@ -121,7 +149,7 @@ export function AssetOrders({ asset }: { asset: RealEstate }) {
                       {formatNumber(o.tokenQuantity)}
                     </TableCell>
                     <TableCell className="text-right font-medium tabular">
-                      {formatMoney(o.amountDue, o.currencyCode)}
+                      {formatRecordedMoney(o.amountDue, o.currencyCode)}
                     </TableCell>
                     <TableCell className="pr-5 text-sm text-muted-foreground">
                       {formatDateTime(o.createdAt)}

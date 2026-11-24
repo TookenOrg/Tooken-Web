@@ -21,14 +21,14 @@ export function OrderTimeline({
         return (
           <li
             key={step.key}
-            className="relative flex items-center gap-3 sm:flex-col sm:items-start sm:gap-2"
+            className="relative flex items-center gap-3 sm:flex-col sm:items-center sm:gap-2 sm:px-2 sm:text-center"
             aria-current={step.state === "current" ? "step" : undefined}
           >
             {!last ? (
               <span
                 aria-hidden
                 className={cn(
-                  "absolute hidden h-px sm:left-8 sm:right-2 sm:top-3.5 sm:block",
+                  "absolute top-8 -bottom-3 left-[13px] w-px sm:top-3.5 sm:right-[calc(-50%+1.125rem)] sm:bottom-auto sm:left-[calc(50%+1.125rem)] sm:h-px sm:w-auto",
                   step.state === "done" ? "bg-emerald-500" : "bg-border",
                 )}
               />
@@ -47,7 +47,7 @@ export function OrderTimeline({
               )}
             >
               {step.state === "current" ? (
-                <span className="absolute inset-0 animate-ping rounded-full bg-amber-300/40" />
+                <span className="absolute inset-0 animate-ping rounded-full bg-amber-300/40 motion-reduce:animate-none" />
               ) : null}
               {step.state === "done" ? (
                 <Check className="size-3.5" aria-hidden />

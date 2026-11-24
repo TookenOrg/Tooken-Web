@@ -38,26 +38,30 @@ export const LEGAL_FORMS = [
   "SICAR",
 ];
 
-const issuerSchema = z
-  .object({
-    name: z.string().trim().min(2, "Enter the legal name").max(200),
-    legal_form: z.string().trim().min(1, "Enter the legal form").max(30),
-    registration_number: z.string().trim().max(50),
-    country_code: z.string().length(2, "Select a jurisdiction"),
-    lei_code: z
-      .string()
-      .trim()
-      .toUpperCase()
-      .refine(
-        (v) => v === "" || /^[A-Z0-9]{20}$/.test(v),
-        "A LEI is exactly 20 letters or digits",
-      ),
-    status_id: z.string(),
-  })
-  .superRefine((v, ctx) => {
+const issuerFieldsSchema = z.object({
+  name: z.string().trim().min(2, "Enter the legal name").max(200),
+  legal_form: z.string().trim().min(1, "Enter the legal form").max(30),
+  registration_number: z.string().trim().max(50),
+  country_code: z.string().length(2, "Select a jurisdiction"),
+  lei_code: z
+    .string()
+    .trim()
+    .toUpperCase()
+    .refine(
+      (v) => v === "" || /^[A-Z0-9]{20}$/.test(v),
+      "A LEI is exactly 20 letters or digits",
+    ),
+  status_id: z.string(),
+});
+
+export type IssuerFormValues = z.infer<typeof issuerFieldsSchema>;
+
+function issuerSchema(mode: "create" | "edit", initial: IssuerFormValues) {
+  return issuerFieldsSchema.superRefine((v, ctx) => {
     if (
       v.status_id === String(ISSUER_STATUS.active.id) &&
-      v.registration_number === ""
+      v.registration_number === "" &&
+      (mode === "create" || initial.registration_number.trim() !== "")
     ) {
       ctx.addIssue({
         code: "custom",
@@ -66,8 +70,7 @@ const issuerSchema = z
       });
     }
   });
-
-export type IssuerFormValues = z.infer<typeof issuerSchema>;
+}
 
 export function issuerToFormValues(issuer?: Issuer): IssuerFormValues {
   return {
@@ -119,12 +122,14 @@ export function IssuerForm({
   onSubmit,
   submitting,
   cancelHref,
+  onCancel,
 }: {
   mode: "create" | "edit";
   defaultValues: IssuerFormValues;
   onSubmit: (values: IssuerFormValues) => void | Promise<void>;
   submitting?: boolean;
   cancelHref?: string;
+  onCancel?: () => void;
 }) {
   const {
     register,
@@ -133,11 +138,15 @@ export function IssuerForm({
     watch,
     formState: { errors, isDirty },
   } = useForm<IssuerFormValues>({
-    resolver: zodResolver(issuerSchema),
+    resolver: zodResolver(issuerSchema(mode, defaultValues)),
     defaultValues,
     mode: "onTouched",
   });
   const isActive = watch("status_id") === String(ISSUER_STATUS.active.id);
+  const country = watch("country_code");
+  const registrationRequired =
+    isActive &&
+    (mode === "create" || defaultValues.registration_number.trim() !== "");
 
   return (
     <form onSubmit={handleSubmit(onSubmit)} noValidate className="space-y-6">
@@ -153,23 +162,37 @@ export function IssuerForm({
             id="issuer-name"
             placeholder="e.g. Tooken Lux Prime SCSp"
             aria-invalid={!!errors.name}
+            aria-describedby={errors.name ? "issuer-name-error" : undefined}
             {...register("name")}
           />
+          {errors.name ? (
+            <span id="issuer-name-error" className="sr-only">
+              {errors.name.message}
+            </span>
+          ) : null}
         </FormField>
         <FormField
           label="Legal form"
           htmlFor="issuer-legal-form"
           required
           error={errors.legal_form?.message}
-          hint="SA, SARL, SCSp, RAIF…"
+          hint="Suggestions are examples; another legal form may be entered."
         >
           <Input
             id="issuer-legal-form"
             list="issuer-legal-forms"
             autoComplete="off"
             aria-invalid={!!errors.legal_form}
+            aria-describedby={
+              errors.legal_form ? "issuer-legal-form-error" : undefined
+            }
             {...register("legal_form")}
           />
+          {errors.legal_form ? (
+            <span id="issuer-legal-form-error" className="sr-only">
+              {errors.legal_form.message}
+            </span>
+          ) : null}
           <datalist id="issuer-legal-forms">
             {LEGAL_FORMS.map((f) => (
               <option key={f} value={f} />
@@ -187,7 +210,16 @@ export function IssuerForm({
             name="country_code"
             render={({ field }) => (
               <Select value={field.value} onValueChange={field.onChange}>
-                <SelectTrigger id="issuer-country" className="w-full">
+                <SelectTrigger
+                  id="issuer-country"
+                  ref={field.ref}
+                  onBlur={field.onBlur}
+                  aria-invalid={!!errors.country_code}
+                  aria-describedby={
+                    errors.country_code ? "issuer-country-error" : undefined
+                  }
+                  className="w-full"
+                >
                   <SelectValue placeholder="Select a country" />
                 </SelectTrigger>
                 <SelectContent>
@@ -200,35 +232,60 @@ export function IssuerForm({
               </Select>
             )}
           />
+          {errors.country_code ? (
+            <span id="issuer-country-error" className="sr-only">
+              {errors.country_code.message}
+            </span>
+          ) : null}
         </FormField>
         <FormField
           label="Registration number"
           htmlFor="issuer-rcs"
-          required={isActive}
+          required={registrationRequired}
           error={errors.registration_number?.message}
-          hint="RCS number in Luxembourg. Unique within the jurisdiction."
+          hint={
+            isActive && mode === "edit" && !defaultValues.registration_number
+              ? "This older active record can be edited without a number. Add one when available."
+              : country === "LU"
+                ? "RCS number in Luxembourg. Required for Active and unique within the jurisdiction."
+                : "Registration number in the selected jurisdiction. Required for Active and unique within that jurisdiction."
+          }
         >
           <Input
             id="issuer-rcs"
-            placeholder="B123456"
+            placeholder={country === "LU" ? "B123456" : undefined}
             className="font-mono"
             aria-invalid={!!errors.registration_number}
+            aria-describedby={
+              errors.registration_number ? "issuer-rcs-error" : undefined
+            }
             {...register("registration_number")}
           />
+          {errors.registration_number ? (
+            <span id="issuer-rcs-error" className="sr-only">
+              {errors.registration_number.message}
+            </span>
+          ) : null}
         </FormField>
         <FormField
           label="LEI code"
           htmlFor="issuer-lei"
           error={errors.lei_code?.message}
-          hint="Optional. 20 characters, ISO 17442."
+          hint="Optional in this form. A LEI has 20 letters or digits."
         >
           <Input
             id="issuer-lei"
             maxLength={20}
             className="font-mono uppercase"
             aria-invalid={!!errors.lei_code}
+            aria-describedby={errors.lei_code ? "issuer-lei-error" : undefined}
             {...register("lei_code")}
           />
+          {errors.lei_code ? (
+            <span id="issuer-lei-error" className="sr-only">
+              {errors.lei_code.message}
+            </span>
+          ) : null}
         </FormField>
       </div>
 
@@ -285,7 +342,11 @@ export function IssuerForm({
       ) : null}
 
       <div className="flex flex-col-reverse gap-2 border-t border-border pt-5 sm:flex-row sm:justify-end">
-        {cancelHref ? (
+        {onCancel ? (
+          <Button type="button" variant="outline" onClick={onCancel}>
+            Cancel
+          </Button>
+        ) : cancelHref ? (
           <Button variant="outline" asChild>
             <Link href={cancelHref}>Cancel</Link>
           </Button>

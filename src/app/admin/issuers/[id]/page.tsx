@@ -1,6 +1,6 @@
 "use client";
 
-import { Ban, Building2, Plus } from "lucide-react";
+import { Ban, Building2, Pencil, Plus } from "lucide-react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useState } from "react";
@@ -70,9 +70,10 @@ export default function IssuerDetailPage() {
   const update = useUpdateIssuer(id);
   const dissolve = useDeleteIssuer();
   const [confirmDissolve, setConfirmDissolve] = useState(false);
+  const [editing, setEditing] = useState<IssuerFormValues | null>(null);
 
-  if (issuer.isLoading) return <PageSkeleton />;
-  if (issuer.isError || !issuer.data) {
+  if (issuer.isLoading && !issuer.data) return <PageSkeleton />;
+  if (!issuer.data) {
     return (
       <>
         <PageHeader
@@ -94,10 +95,19 @@ export default function IssuerDetailPage() {
 
   const i = issuer.data;
   const dissolved = i.status === "dissolved";
-  const initial = issuerToFormValues(i);
+  const knownEditableStatus = ["draft", "active", "suspended"].includes(
+    i.status,
+  );
+  const countKnown =
+    typeof i.real_estate_count === "number" &&
+    Number.isSafeInteger(i.real_estate_count) &&
+    i.real_estate_count >= 0;
+  const canDissolve =
+    knownEditableStatus && countKnown && i.real_estate_count === 0;
 
   const save = async (values: IssuerFormValues) => {
-    const patch = buildIssuerPatch(initial, values);
+    if (!editing) return;
+    const patch = buildIssuerPatch(editing, values);
     if (Object.keys(patch).length === 0) {
       toast.info("No changes to save");
       return;
@@ -105,12 +115,17 @@ export default function IssuerDetailPage() {
     try {
       await update.mutateAsync(patch);
       toast.success("Issuer updated");
+      setEditing(null);
     } catch {
       // Rendered from update.error.
     }
   };
 
   const runDissolve = () => {
+    if (!canDissolve || issuer.isError) {
+      setConfirmDissolve(false);
+      return;
+    }
     dissolve.mutate(i.id, {
       onSuccess: () => {
         setConfirmDissolve(false);
@@ -122,6 +137,7 @@ export default function IssuerDetailPage() {
         toast.error("The issuer could not be dissolved", {
           description: errorMessage(e),
         });
+        issuer.refetch();
       },
     });
   };
@@ -145,37 +161,61 @@ export default function IssuerDetailPage() {
           { label: i.name },
         ]}
         actions={
-          <>
-            {!dissolved ? (
-              <Button
-                variant="outline"
-                className="text-red-600 hover:bg-red-50 hover:text-red-700"
-                onClick={() => setConfirmDissolve(true)}
-              >
-                <Ban /> Dissolve
-              </Button>
-            ) : null}
+          knownEditableStatus ? (
             <Button
               asChild
               className="bg-brand text-brand-foreground hover:bg-brand-light"
             >
-              <Link href="/admin/assets/new">
+              <Link href={`/admin/assets/new?issuerId=${i.id}`}>
                 <Plus /> New asset
               </Link>
             </Button>
-          </>
+          ) : null
         }
       />
 
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_340px]">
         <div className="min-w-0 space-y-6">
+          {issuer.isError ? (
+            <Alert variant="destructive">
+              <AlertTitle>Latest issuer details are unavailable</AlertTitle>
+              <AlertDescription>
+                The information shown may be out of date.{" "}
+                <button
+                  type="button"
+                  className="underline"
+                  onClick={() => issuer.refetch()}
+                >
+                  Retry
+                </button>
+                .
+              </AlertDescription>
+            </Alert>
+          ) : null}
           <Panel>
             <PanelHeader
               title="Legal identity"
               description={
                 dissolved
-                  ? "A dissolved issuer is final and can no longer be edited."
-                  : "Only modified fields are sent."
+                  ? "Dissolution is final. This issuer is read-only and cannot carry new assets."
+                  : !knownEditableStatus
+                    ? "The current status is unavailable for editing or creating assets."
+                    : "Review the registered details before making changes."
+              }
+              actions={
+                knownEditableStatus && !editing ? (
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    onClick={() => {
+                      update.reset();
+                      setEditing(issuerToFormValues(i));
+                    }}
+                  >
+                    <Pencil /> Edit legal details
+                  </Button>
+                ) : null
               }
             />
             <PanelBody className="space-y-4">
@@ -187,7 +227,7 @@ export default function IssuerDetailPage() {
                   </AlertDescription>
                 </Alert>
               ) : null}
-              {dissolved ? (
+              {!editing || !knownEditableStatus ? (
                 <KeyValueList
                   columns={2}
                   items={[
@@ -206,11 +246,14 @@ export default function IssuerDetailPage() {
                 />
               ) : (
                 <IssuerForm
-                  key={i.updated_at ?? i.id}
                   mode="edit"
-                  defaultValues={initial}
+                  defaultValues={editing}
                   onSubmit={save}
                   submitting={update.isPending}
+                  onCancel={() => {
+                    setEditing(null);
+                    update.reset();
+                  }}
                 />
               )}
             </PanelBody>
@@ -219,7 +262,7 @@ export default function IssuerDetailPage() {
         </div>
 
         <div className="space-y-6">
-          {!dissolved ? <StatusPanel issuer={i} /> : null}
+          {knownEditableStatus ? <StatusPanel issuer={i} /> : null}
           <Panel>
             <PanelHeader title="Record" />
             <PanelBody className="py-2">
@@ -228,7 +271,9 @@ export default function IssuerDetailPage() {
                   { label: "Issuer ID", value: `#${i.id}` },
                   {
                     label: "Assets carried",
-                    value: formatNumber(i.real_estate_count ?? 0),
+                    value: !countKnown
+                      ? "Unavailable"
+                      : formatNumber(i.real_estate_count),
                   },
                   { label: "Created", value: formatDateTime(i.created_at) },
                   { label: "Last update", value: formatDateTime(i.updated_at) },
@@ -236,11 +281,58 @@ export default function IssuerDetailPage() {
               />
             </PanelBody>
           </Panel>
+          {!dissolved ? (
+            <Panel>
+              <PanelHeader
+                title="Exceptional actions"
+                description="Dissolution is final and cannot be reversed here."
+              />
+              <PanelBody className="space-y-3">
+                <p className="text-sm text-muted-foreground">
+                  {!countKnown
+                    ? "The attached asset count is unavailable. Refresh before dissolving."
+                    : (i.real_estate_count ?? 0) > 0
+                      ? `This issuer carries ${i.real_estate_count} asset${i.real_estate_count === 1 ? "" : "s"}. Reassign or delete them before dissolution.`
+                      : !knownEditableStatus
+                        ? "Dissolution is unavailable while the issuer status is unknown."
+                        : "No attached assets are reported. The server will check again before dissolution."}
+                </p>
+                {dissolve.isError ? (
+                  <Alert variant="destructive">
+                    <AlertTitle>Dissolution was refused</AlertTitle>
+                    <AlertDescription>
+                      {errorMessage(dissolve.error)} Refresh the issuer and
+                      resolve the conflict before retrying.
+                    </AlertDescription>
+                  </Alert>
+                ) : null}
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="text-red-600 hover:bg-red-50 hover:text-red-700"
+                  disabled={
+                    !canDissolve || dissolve.isPending || issuer.isError
+                  }
+                  onClick={() => {
+                    dissolve.reset();
+                    setConfirmDissolve(true);
+                  }}
+                >
+                  <Ban /> Dissolve issuer
+                </Button>
+                {issuer.isError ? (
+                  <p className="text-xs text-muted-foreground">
+                    Refresh the issuer before dissolving it.
+                  </p>
+                ) : null}
+              </PanelBody>
+            </Panel>
+          ) : null}
         </div>
       </div>
 
       <ConfirmDialog
-        open={confirmDissolve}
+        open={confirmDissolve && canDissolve && !issuer.isError}
         onOpenChange={setConfirmDissolve}
         title={`Dissolve ${i.name}?`}
         description={
@@ -249,13 +341,9 @@ export default function IssuerDetailPage() {
               Dissolution is final: the issuer is kept for audit purposes but
               can no longer be edited nor carry assets.
             </p>
-            {(i.real_estate_count ?? 0) > 0 ? (
-              <p className="font-medium text-red-700">
-                This issuer still carries {i.real_estate_count} asset
-                {i.real_estate_count === 1 ? "" : "s"}. Reassign or delete them
-                first; the platform will refuse otherwise.
-              </p>
-            ) : null}
+            <p>
+              The server checks for attached assets again before dissolving.
+            </p>
           </div>
         }
         confirmLabel="Dissolve issuer"
@@ -360,47 +448,69 @@ function IssuerAssets({ issuerId }: { issuerId: number }) {
         <TableSkeleton rows={2} cols={4} />
       ) : list.isError ? (
         <ErrorState error={list.error} onRetry={() => list.refetch()} />
-      ) : owned.length === 0 ? (
-        <EmptyState
-          icon={Building2}
-          title="No offering yet"
-          description="Assets attached to this issuer will be listed here."
-        />
       ) : (
-        <div className="overflow-x-auto">
-          <Table>
-            <TableHeader>
-              <TableRow className="hover:bg-transparent">
-                <TableHead className="pl-5">Asset</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead className="text-right">Valuation</TableHead>
-                <TableHead className="pr-5 text-right">Yield</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {owned.map((r) => (
-                <TableRow key={r.id}>
-                  <TableCell className="pl-5">
-                    <AssetCell asset={r} linked />
-                  </TableCell>
-                  <TableCell>
-                    <RealEstateStatusBadge status={r.status} />
-                  </TableCell>
-                  <TableCell className="text-right tabular">
-                    {formatMoney(
-                      r.configuration?.total_valuation,
-                      r.configuration?.currency_code,
-                      { decimals: 0 },
-                    )}
-                  </TableCell>
-                  <TableCell className="pr-5 text-right tabular">
-                    {formatPercent(r.configuration?.yield)}
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </div>
+        <>
+          {details.isError ? (
+            <Alert variant="destructive" className="m-4">
+              <AlertTitle>Some offering details are unavailable</AlertTitle>
+              <AlertDescription>
+                The list may be incomplete.{" "}
+                <button
+                  type="button"
+                  className="underline"
+                  onClick={() => details.refetchFailed()}
+                >
+                  Retry
+                </button>
+                .
+              </AlertDescription>
+            </Alert>
+          ) : null}
+          {owned.length === 0 ? (
+            !details.isError ? (
+              <EmptyState
+                icon={Building2}
+                title="No offering yet"
+                description="Assets attached to this issuer will be listed here."
+              />
+            ) : null
+          ) : (
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow className="hover:bg-transparent">
+                    <TableHead className="pl-5">Asset</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead className="text-right">Valuation</TableHead>
+                    <TableHead className="pr-5 text-right">Yield</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {owned.map((r) => (
+                    <TableRow key={r.id}>
+                      <TableCell className="pl-5">
+                        <AssetCell asset={r} linked />
+                      </TableCell>
+                      <TableCell>
+                        <RealEstateStatusBadge status={r.status} />
+                      </TableCell>
+                      <TableCell className="text-right tabular">
+                        {formatMoney(
+                          r.configuration?.total_valuation,
+                          r.configuration?.currency_code,
+                          { decimals: 0 },
+                        )}
+                      </TableCell>
+                      <TableCell className="pr-5 text-right tabular">
+                        {formatPercent(r.configuration?.yield)}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          )}
+        </>
       )}
     </Panel>
   );

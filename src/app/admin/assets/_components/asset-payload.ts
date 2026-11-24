@@ -7,6 +7,7 @@ import type {
   RealEstateWriteRequest,
 } from "@/lib/api/types";
 import { multiplyDecimal } from "@/lib/format";
+import type { AssetFieldLocks } from "./asset-locks";
 
 /**
  * Form model of an asset and the pure functions turning it into API payloads.
@@ -40,7 +41,10 @@ const optionalCoordinate = z
 export const assetFormSchema = z
   .object({
     title: z.string().trim().min(3, "Enter the asset name").max(200),
-    description: z.string().trim().max(5000),
+    description: z
+      .string()
+      .trim()
+      .max(2000, "Description must be at most 2,000 characters"),
     estate_type_id: z.string().min(1, "Select an asset type"),
     issuer_id: z.string().min(1, "Select the issuing vehicle"),
     address: z.object({
@@ -91,6 +95,7 @@ export const assetFormSchema = z
           .refine((v) => v.startsWith("https://"), "Use an https:// URL"),
         alt_text: z.string().trim().max(200),
         is_cover: z.boolean(),
+        media_type: z.string().optional(),
       }),
     ),
   })
@@ -184,7 +189,7 @@ export function emptyAssetValues(): AssetFormValues {
     configuration: {
       total_shares: "",
       price_per_share: "",
-      currency_code: "EUR",
+      currency_code: "",
       yield: "",
       payment_frequency: "",
       payment_frequency_type_id: "",
@@ -246,7 +251,7 @@ export function assetToFormValues(re: RealEstate): AssetFormValues {
       ...base.configuration,
       total_shares: str(c?.total_shares),
       price_per_share: str(c?.price_per_share),
-      currency_code: str(c?.currency_code) || base.configuration.currency_code,
+      currency_code: str(c?.currency_code),
       yield: str(c?.yield),
       payment_frequency: str(c?.payment_frequency),
       payment_frequency_type_id: str(c?.payment_frequency_type_id),
@@ -264,6 +269,7 @@ export function assetToFormValues(re: RealEstate): AssetFormValues {
         url: m.url ?? "",
         alt_text: str(m.alt_text),
         is_cover: !!m.is_cover,
+        media_type: m.media_type || "image",
       })),
   };
 }
@@ -290,14 +296,17 @@ function compact<T extends Record<string, unknown>>(obj: T): Partial<T> {
 
 const toInt = (v: string) => (v.trim() === "" ? undefined : Number(v));
 
-function mediaInputs(media: AssetFormValues["media"]): RealEstateMediaInput[] {
+function mediaInputs(
+  media: AssetFormValues["media"],
+  defaultCover = true,
+): RealEstateMediaInput[] {
   const hasCover = media.some((m) => m.is_cover);
   return media.map((m, i) => ({
     url: m.url.trim(),
     ...(m.alt_text.trim() ? { alt_text: m.alt_text.trim() } : {}),
-    media_type: "image",
+    media_type: m.media_type || "image",
     position: i,
-    is_cover: hasCover ? m.is_cover : i === 0,
+    is_cover: hasCover ? m.is_cover : defaultCover && i === 0,
   }));
 }
 
@@ -401,9 +410,10 @@ const CONFIG_NUMERIC = ["payment_frequency", "payment_frequency_type_id"];
 export function buildPatchPayload(
   initial: AssetFormValues,
   current: AssetFormValues,
+  locks: AssetFieldLocks = {},
 ): RealEstatePatchRequest {
   const patch: RealEstatePatchRequest = {};
-  if (initial.title.trim() !== current.title.trim()) {
+  if (!locks.title && initial.title.trim() !== current.title.trim()) {
     patch.title = current.title.trim();
   }
   if (initial.description.trim() !== current.description.trim()) {
@@ -431,11 +441,16 @@ export function buildPatchPayload(
     current.configuration,
     CONFIG_NUMERIC,
   );
+  if (locks["configuration.total_shares"]) delete config.total_shares;
+  if (locks["configuration.max_shares_per_investor"]) {
+    delete config.max_shares_per_investor;
+  }
   if (Object.keys(config).length) patch.configuration = config;
 
-  const nextMedia = mediaInputs(current.media);
+  const nextMedia = mediaInputs(current.media, false);
   if (
-    JSON.stringify(mediaInputs(initial.media)) !== JSON.stringify(nextMedia)
+    JSON.stringify(mediaInputs(initial.media, false)) !==
+    JSON.stringify(nextMedia)
   ) {
     patch.media = nextMedia;
     const cover = coverUrl(current.media) ?? "";

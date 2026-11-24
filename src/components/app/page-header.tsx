@@ -20,7 +20,12 @@ export function PageHeader({
   className?: string;
 }) {
   return (
-    <div className={cn("mb-6 space-y-3 md:mb-8", className)}>
+    <div
+      className={cn(
+        "mb-6 space-y-4 border-b border-border pb-6 md:mb-8",
+        className,
+      )}
+    >
       {breadcrumbs?.length ? (
         <nav
           aria-label="Breadcrumb"
@@ -43,11 +48,11 @@ export function PageHeader({
       <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div className="min-w-0 space-y-1">
           {eyebrow ? (
-            <div className="text-xs font-semibold uppercase tracking-wider text-brand">
+            <div className="mb-2 text-[10px] font-medium uppercase tracking-[0.16em] text-muted-foreground">
               {eyebrow}
             </div>
           ) : null}
-          <h1 className="truncate text-2xl font-semibold tracking-tight text-ink md:text-[28px]">
+          <h1 className="break-words text-2xl font-medium tracking-tight text-ink md:text-3xl">
             {title}
           </h1>
           {description ? (

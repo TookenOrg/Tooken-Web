@@ -37,7 +37,7 @@ export function HealthIndicator({
         >
           <span className="relative flex size-2">
             {ok ? (
-              <span className="absolute inline-flex size-full animate-ping rounded-full bg-emerald-400 opacity-60" />
+              <span className="absolute inline-flex size-full animate-ping rounded-full bg-emerald-400 opacity-60 motion-reduce:animate-none" />
             ) : null}
             <span
               className={cn(

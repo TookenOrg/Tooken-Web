@@ -19,9 +19,9 @@ import { useSession } from "@/lib/auth/session-context";
 import {
   AuthShell,
   PASSWORD_MAX_BYTES,
-  resolveRedirect,
   utf8Length,
 } from "../_components/auth-shell";
+import { safeCallback } from "../sign-in/safe-callback";
 
 const name = (label: string) =>
   z
@@ -39,7 +39,7 @@ const schema = z
       .string()
       .min(8, "Use at least 8 characters.")
       .refine((v) => utf8Length(v) <= PASSWORD_MAX_BYTES, {
-        message: `At most ${PASSWORD_MAX_BYTES} bytes (accented letters count double).`,
+        message: `Use at most ${PASSWORD_MAX_BYTES} UTF-8 bytes.`,
       }),
     confirmPassword: z.string().min(1, "Confirm your password."),
     terms: z.boolean().refine((v) => v, {
@@ -102,7 +102,7 @@ function SignUpForm() {
         password: values.password,
       });
       router.replace(
-        resolveRedirect(searchParams.get("callbackUrl"), homeFor(user.role)),
+        safeCallback(searchParams.get("callbackUrl"), homeFor(user.role)),
       );
     } catch (err) {
       setError(errorMessage(err));
@@ -125,63 +125,81 @@ function SignUpForm() {
         ) : null}
 
         <div className="grid gap-4 sm:grid-cols-2">
-          <FormField
-            label="First name"
-            htmlFor="firstName"
-            error={errors.firstName?.message}
-            required
-          >
+          <FormField label="First name" htmlFor="firstName" required>
             <Input
               id="firstName"
               autoComplete="given-name"
+              required
               aria-invalid={!!errors.firstName}
+              aria-describedby={
+                errors.firstName ? "firstName-error" : undefined
+              }
               {...register("firstName")}
             />
+            {errors.firstName ? (
+              <p
+                id="firstName-error"
+                className="text-xs text-red-600"
+                role="alert"
+              >
+                {errors.firstName.message}
+              </p>
+            ) : null}
           </FormField>
-          <FormField
-            label="Last name"
-            htmlFor="lastName"
-            error={errors.lastName?.message}
-            required
-          >
+          <FormField label="Last name" htmlFor="lastName" required>
             <Input
               id="lastName"
               autoComplete="family-name"
+              required
               aria-invalid={!!errors.lastName}
+              aria-describedby={errors.lastName ? "lastName-error" : undefined}
               {...register("lastName")}
             />
+            {errors.lastName ? (
+              <p
+                id="lastName-error"
+                className="text-xs text-red-600"
+                role="alert"
+              >
+                {errors.lastName.message}
+              </p>
+            ) : null}
           </FormField>
         </div>
 
-        <FormField
-          label="Email address"
-          htmlFor="email"
-          error={errors.email?.message}
-          required
-        >
+        <FormField label="Email address" htmlFor="email" required>
           <Input
             id="email"
             type="email"
             autoComplete="email"
-            placeholder="name@institution.com"
+            placeholder="name@example.com"
+            required
             aria-invalid={!!errors.email}
+            aria-describedby={errors.email ? "email-error" : undefined}
             {...register("email")}
           />
+          {errors.email ? (
+            <p id="email-error" className="text-xs text-red-600" role="alert">
+              {errors.email.message}
+            </p>
+          ) : null}
         </FormField>
 
-        <FormField
-          label="Password"
-          htmlFor="password"
-          error={errors.password?.message}
-          required
-        >
+        <FormField label="Password" htmlFor="password" required>
           <div className="relative">
             <Input
               id="password"
               type={showPassword ? "text" : "password"}
               autoComplete="new-password"
+              required
               aria-invalid={!!errors.password}
-              aria-describedby="password-strength"
+              aria-describedby={[
+                "password-hint",
+                password ? "password-strength" : null,
+                errors.password ? "password-error" : null,
+              ]
+                .filter(Boolean)
+                .join(" ")}
               className="pr-10"
               {...register("password")}
             />
@@ -198,13 +216,17 @@ function SignUpForm() {
               )}
             </button>
           </div>
+          <p id="password-hint" className="text-xs text-muted-foreground">
+            Use at least 8 characters and at most {PASSWORD_MAX_BYTES} UTF-8
+            bytes. Some characters use more than one byte.
+          </p>
           {password ? (
             <div
               id="password-strength"
               className="flex items-center gap-2 pt-1"
               aria-live="polite"
             >
-              <div className="flex flex-1 gap-1">
+              <div className="flex flex-1 gap-1" aria-hidden="true">
                 {[1, 2, 3, 4].map((i) => (
                   <span
                     key={i}
@@ -223,21 +245,38 @@ function SignUpForm() {
               </span>
             </div>
           ) : null}
+          {errors.password ? (
+            <p
+              id="password-error"
+              className="text-xs text-red-600"
+              role="alert"
+            >
+              {errors.password.message}
+            </p>
+          ) : null}
         </FormField>
 
-        <FormField
-          label="Confirm password"
-          htmlFor="confirmPassword"
-          error={errors.confirmPassword?.message}
-          required
-        >
+        <FormField label="Confirm password" htmlFor="confirmPassword" required>
           <Input
             id="confirmPassword"
             type={showPassword ? "text" : "password"}
             autoComplete="new-password"
+            required
             aria-invalid={!!errors.confirmPassword}
+            aria-describedby={
+              errors.confirmPassword ? "confirmPassword-error" : undefined
+            }
             {...register("confirmPassword")}
           />
+          {errors.confirmPassword ? (
+            <p
+              id="confirmPassword-error"
+              className="text-xs text-red-600"
+              role="alert"
+            >
+              {errors.confirmPassword.message}
+            </p>
+          ) : null}
         </FormField>
 
         <div className="space-y-1.5 pt-1">
@@ -248,11 +287,19 @@ function SignUpForm() {
               render={({ field }) => (
                 <Checkbox
                   id="terms"
+                  name={field.name}
+                  ref={field.ref}
                   checked={field.value}
                   onCheckedChange={(v) => field.onChange(v === true)}
                   onBlur={field.onBlur}
+                  required
                   aria-invalid={!!errors.terms}
-                  className="mt-0.5"
+                  aria-describedby={
+                    errors.terms
+                      ? "terms-availability terms-error"
+                      : "terms-availability"
+                  }
+                  className="mt-0.5 size-6"
                 />
               )}
             />
@@ -265,8 +312,12 @@ function SignUpForm() {
               before any investment.
             </label>
           </div>
+          <p id="terms-availability" className="text-xs text-muted-foreground">
+            The Terms of Use and Privacy Notice are not currently available to
+            review in this application.
+          </p>
           {errors.terms ? (
-            <p className="text-xs text-red-600" role="alert">
+            <p id="terms-error" className="text-xs text-red-600" role="alert">
               {errors.terms.message}
             </p>
           ) : null}

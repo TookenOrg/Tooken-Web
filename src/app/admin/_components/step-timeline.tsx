@@ -13,18 +13,18 @@ export function StepTimeline({
   live?: boolean;
 }) {
   return (
-    <ol className="grid gap-4 sm:grid-flow-col sm:auto-cols-fr sm:gap-2">
+    <ol className="grid gap-4 sm:grid-flow-col sm:auto-cols-fr sm:gap-0">
       {steps.map((step, i) => (
         <li
           key={step.key}
-          className="relative flex gap-3 sm:flex-col sm:gap-2"
+          className="relative flex gap-3 sm:flex-col sm:items-center sm:gap-2 sm:px-2 sm:text-center"
           aria-current={step.state === "current" ? "step" : undefined}
         >
           {i < steps.length - 1 ? (
             <span
               aria-hidden
               className={cn(
-                "absolute top-8 bottom-[-1rem] left-[13px] w-px sm:top-[13px] sm:right-[-0.5rem] sm:bottom-auto sm:left-9 sm:h-px sm:w-auto",
+                "absolute top-8 bottom-[-1rem] left-[13px] w-px sm:top-3.5 sm:right-[calc(-50%+1.125rem)] sm:bottom-auto sm:left-[calc(50%+1.125rem)] sm:h-px sm:w-auto",
                 step.state === "done" ? "bg-emerald-400" : "bg-border",
               )}
             />

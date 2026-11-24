@@ -27,57 +27,51 @@ export function PublicHeader() {
   const pathname = usePathname();
   const { ready, isAuthenticated, role, isStaff } = useSession();
   const [open, setOpen] = useState(false);
+  const links = LINKS.filter(
+    (link) =>
+      link.href !== "/#institutions" || !(isAuthenticated && role === "USER"),
+  );
 
   return (
-    <header className="sticky top-0 z-40 border-b border-white/10 bg-ink text-white">
-      <div className="mx-auto flex h-16 max-w-7xl items-center gap-6 px-4 sm:px-6 lg:px-8">
-        <Brand />
+    <header className="sticky top-0 z-40 border-b border-border bg-background text-ink">
+      <div className="mx-auto flex h-20 max-w-7xl items-center gap-8 px-5 sm:px-8">
+        <Brand tone="dark" />
         <nav
-          className="hidden flex-1 items-center gap-1 md:flex"
+          className="hidden flex-1 items-center gap-1 lg:flex"
           aria-label="Main"
         >
-          {LINKS.map((l) => (
+          {links.map((l) => (
             <Link
               key={l.href}
               href={l.href}
               className={cn(
-                "rounded-md px-3 py-2 text-sm text-white/70 transition hover:text-white",
-                pathname === l.href && "text-white",
+                "border-b border-transparent px-2 py-2 text-sm text-muted-foreground transition-colors hover:text-ink",
+                pathname === l.href && "border-ink text-ink",
               )}
             >
               {l.label}
             </Link>
           ))}
         </nav>
-        <div className="ml-auto hidden items-center gap-2 md:flex">
+        <div className="ml-auto hidden items-center gap-2 lg:flex">
           {!ready ? null : isAuthenticated ? (
             <>
-              <Button
-                asChild
-                size="sm"
-                variant="ghost"
-                className="text-white/80 hover:bg-white/10 hover:text-white"
-              >
+              <Button asChild size="sm" variant="ghost" className="text-ink">
                 <Link href={homeFor(role)}>
                   {isStaff ? "Back office" : "Dashboard"}
                 </Link>
               </Button>
-              <UserMenu tone="dark" />
+              <UserMenu />
             </>
           ) : (
             <>
-              <Button
-                asChild
-                size="sm"
-                variant="ghost"
-                className="text-white/80 hover:bg-white/10 hover:text-white"
-              >
+              <Button asChild size="sm" variant="ghost" className="text-ink">
                 <Link href="/sign-in">Sign in</Link>
               </Button>
               <Button
                 asChild
                 size="sm"
-                className="bg-brand text-brand-foreground hover:bg-brand-light"
+                className="bg-ink text-white hover:bg-ink-2"
               >
                 <Link href="/sign-up">Open an account</Link>
               </Button>
@@ -86,7 +80,7 @@ export function PublicHeader() {
         </div>
         <Sheet open={open} onOpenChange={setOpen}>
           <SheetTrigger
-            className="ml-auto rounded-md p-2 hover:bg-white/10 md:hidden"
+            className="ml-auto rounded-md p-2 hover:bg-muted lg:hidden"
             aria-label="Open menu"
           >
             <Menu className="size-5" />
@@ -103,7 +97,7 @@ export function PublicHeader() {
               className="flex flex-1 flex-col gap-1 overflow-y-auto p-3"
               aria-label="Mobile"
             >
-              {LINKS.map((l) => (
+              {links.map((l) => (
                 <Link
                   key={l.href}
                   href={l.href}

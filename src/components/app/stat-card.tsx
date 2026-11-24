@@ -20,26 +20,24 @@ export function StatCard({
   className?: string;
 }) {
   const accents = {
-    ink: "bg-ink/5 text-ink",
-    brand: "bg-amber-50 text-amber-600",
-    signal: "bg-cyan-50 text-cyan-700",
-    success: "bg-emerald-50 text-emerald-700",
+    ink: "text-muted-foreground",
+    brand: "text-amber-700",
+    signal: "text-cyan-700",
+    success: "text-emerald-700",
   } as const;
   return (
     <div
       className={cn(
-        "rounded-lg border border-border bg-card p-5 shadow-[0_1px_2px_rgb(16_24_40/0.04)]",
+        "min-w-0 rounded-md border border-border bg-card p-4 sm:p-5",
         className,
       )}
     >
-      <div className="flex items-start justify-between gap-3">
-        <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
-          {label}
-        </p>
+      <div className="flex items-start justify-between gap-2 sm:gap-3">
+        <p className="text-xs font-medium text-muted-foreground">{label}</p>
         {Icon ? (
           <span
             className={cn(
-              "flex size-8 items-center justify-center rounded-md",
+              "flex size-4 shrink-0 items-center justify-center",
               accents[accent],
             )}
           >
@@ -47,11 +45,13 @@ export function StatCard({
           </span>
         ) : null}
       </div>
-      <div className="mt-3 text-2xl font-semibold tracking-tight text-ink tabular">
-        {loading ? <Skeleton className="h-7 w-28" /> : value}
+      <div className="mt-3 break-words text-lg font-medium tracking-tight text-ink tabular min-[390px]:text-xl sm:mt-5 sm:text-2xl lg:text-3xl">
+        {loading ? <Skeleton className="h-7 w-24 sm:w-28" /> : value}
       </div>
       {hint ? (
-        <div className="mt-1 text-xs text-muted-foreground">{hint}</div>
+        <div className="mt-1 break-words text-xs text-muted-foreground">
+          {hint}
+        </div>
       ) : null}
     </div>
   );

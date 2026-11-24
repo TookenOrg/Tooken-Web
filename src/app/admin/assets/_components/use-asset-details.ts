@@ -24,5 +24,11 @@ export function useAssetDetails(ids: number[]) {
   return {
     byId,
     isLoading: results.some((r) => r.isLoading),
+    isError: results.some((r) => r.isError),
+    failedIds: new Set(
+      results.flatMap((r, index) => (r.isError ? [ids[index]] : [])),
+    ),
+    refetchFailed: () =>
+      Promise.all(results.filter((r) => r.isError).map((r) => r.refetch())),
   };
 }

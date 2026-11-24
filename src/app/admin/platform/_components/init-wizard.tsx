@@ -73,11 +73,20 @@ export function InitWizard() {
     <div className="space-y-4">
       <Alert className="border-amber-200 bg-amber-50">
         <AlertTriangle />
-        <AlertTitle>Fresh deployments only</AlertTitle>
+        <AlertTitle>Verify prerequisites before bootstrap</AlertTitle>
         <AlertDescription>
-          These steps bootstrap the blockchain infrastructure once, in order.
-          They are not idempotent: running them on an initialised environment
-          deploys duplicate contracts and may disconnect existing tokens.
+          <p>
+            Verify the target network and environment independently, then
+            confirm each preceding step has completed before continuing. These
+            operations are not idempotent: repeating a step may deploy duplicate
+            contracts or disconnect existing tokens.
+          </p>
+          <p>
+            After a partial failure, use deployment records to identify
+            unfinished steps before resuming. The suite lookup cannot verify
+            every bootstrap step. HTTP 202 means a request was accepted, not
+            that its on-chain work succeeded.
+          </p>
         </AlertDescription>
       </Alert>
       <ol className="space-y-3">
@@ -106,13 +115,10 @@ function InitStepCard({ step, index }: { step: InitStep; index: number }) {
             {step.title}
           </span>
         }
-        description={
-          <span className="font-mono text-[11px]">{step.endpoint}</span>
-        }
         actions={
           <>
             <StatusBadge tone={step.async ? "info" : "neutral"}>
-              {step.async ? "Asynchronous · 202" : "Synchronous"}
+              {step.async ? "Asynchronous" : "Synchronous response"}
             </StatusBadge>
             <Button
               size="sm"
@@ -127,15 +133,15 @@ function InitStepCard({ step, index }: { step: InitStep; index: number }) {
       />
       <PanelBody className="space-y-3 py-4">
         <p className="text-sm text-muted-foreground">{step.description}</p>
-        {mutation.isSuccess && step.async ? (
-          <p className="text-xs text-muted-foreground">
-            Request accepted: the deployment continues in the background. Check
-            the T-REX suite lookup or backend logs for completion.
-          </p>
-        ) : null}
         <ResultPanel
           data={mutation.isSuccess ? (mutation.data ?? null) : undefined}
           error={mutation.error}
+          endpoint={step.endpoint}
+          status={
+            step.async
+              ? "Request accepted. HTTP 202 does not confirm on-chain completion; verify the outcome before continuing or retrying."
+              : "Response received. Verify the outcome before continuing."
+          }
         />
       </PanelBody>
       <ConfirmDialog
@@ -145,11 +151,17 @@ function InitStepCard({ step, index }: { step: InitStep; index: number }) {
         description={
           <div className="space-y-2">
             <p>
-              <strong>Only run this on a fresh deployment.</strong> The platform
-              may already be initialised; this operation is not idempotent and
-              sends real blockchain transactions.
+              <strong>
+                Verify the target and prerequisites independently.
+              </strong>{" "}
+              Run this only for a new deployment or to resume a verified
+              unfinished step after a partial failure. This operation is not
+              idempotent and sends real blockchain transactions.
             </p>
-            <p className="font-mono text-xs">{step.endpoint}</p>
+            <p>
+              Network and environment are not provided by this console. Confirm
+              them before proceeding.
+            </p>
           </div>
         }
         confirmLabel="I understand, run"

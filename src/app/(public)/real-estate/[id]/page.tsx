@@ -4,6 +4,7 @@ import {
   ArrowLeft,
   ArrowRight,
   Building2,
+  ChevronDown,
   ChevronRight,
   Coins,
   Info,
@@ -13,12 +14,12 @@ import {
   ShieldAlert,
   ShieldCheck,
 } from "lucide-react";
-import Image from "next/image";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useState } from "react";
 import { FavoriteButton } from "@/components/app/favorite-button";
 import { HashValue } from "@/components/app/hash-value";
+import { ImageWithLoader } from "@/components/app/image-with-loader";
 import { KeyValueList } from "@/components/app/key-value";
 import { Panel, PanelBody, PanelHeader } from "@/components/app/panel";
 import {
@@ -31,6 +32,7 @@ import {
   KycStatusBadge,
   RealEstateStatusBadge,
 } from "@/components/app/status-badges";
+import { PageLoader } from "@/components/app/tooken-loader";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ApiError } from "@/lib/api/client";
@@ -43,7 +45,7 @@ import {
   formatMoney,
   formatNumber,
   formatPercent,
-  remainingShares,
+  parseDecimal,
 } from "@/lib/format";
 import { offeringTerms } from "@/lib/offering-terms";
 import { countryName, estateTypeLabel } from "@/lib/reference";
@@ -73,7 +75,7 @@ function Gallery({ estate }: { estate: RealEstate }) {
 
   if (!current?.url) {
     return (
-      <div className="bg-animated-gradient-dark flex aspect-[16/9] items-center justify-center rounded-lg">
+      <div className="flex aspect-[16/9] items-center justify-center rounded-sm bg-ink">
         <Building2 className="size-14 text-white/20" aria-hidden />
         <span className="sr-only">No photo available</span>
       </div>
@@ -82,8 +84,8 @@ function Gallery({ estate }: { estate: RealEstate }) {
 
   return (
     <div className="space-y-2">
-      <div className="relative aspect-[16/9] overflow-hidden rounded-lg bg-ink">
-        <Image
+      <div className="relative aspect-[16/9] overflow-hidden rounded-sm bg-muted">
+        <ImageWithLoader
           key={current.url}
           src={current.url}
           alt={current.alt_text || estate.title || "Property photo"}
@@ -91,6 +93,7 @@ function Gallery({ estate }: { estate: RealEstate }) {
           priority
           sizes="(min-width: 1024px) 800px, 100vw"
           className="object-cover"
+          loaderSize={40}
         />
         {items.length > 1 ? (
           <>
@@ -99,7 +102,7 @@ function Gallery({ estate }: { estate: RealEstate }) {
               onClick={() =>
                 setIndex((i) => (i - 1 + items.length) % items.length)
               }
-              className="absolute top-1/2 left-3 flex size-9 -translate-y-1/2 items-center justify-center rounded-full bg-white/90 text-ink shadow hover:bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              className="absolute top-1/2 left-3 z-10 flex size-9 -translate-y-1/2 items-center justify-center rounded-full bg-white/90 text-ink shadow hover:bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               aria-label="Previous photo"
             >
               <ArrowLeft className="size-4" />
@@ -107,12 +110,12 @@ function Gallery({ estate }: { estate: RealEstate }) {
             <button
               type="button"
               onClick={() => setIndex((i) => (i + 1) % items.length)}
-              className="absolute top-1/2 right-3 flex size-9 -translate-y-1/2 items-center justify-center rounded-full bg-white/90 text-ink shadow hover:bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              className="absolute top-1/2 right-3 z-10 flex size-9 -translate-y-1/2 items-center justify-center rounded-full bg-white/90 text-ink shadow hover:bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               aria-label="Next photo"
             >
               <ArrowRight className="size-4" />
             </button>
-            <span className="absolute right-3 bottom-3 rounded bg-ink/80 px-2 py-0.5 text-xs text-white tabular">
+            <span className="absolute right-3 bottom-3 z-10 rounded bg-ink/80 px-2 py-0.5 text-xs text-white tabular">
               {index + 1} / {items.length}
             </span>
           </>
@@ -128,18 +131,19 @@ function Gallery({ estate }: { estate: RealEstate }) {
               aria-label={`Show photo ${i + 1}`}
               aria-current={i === index}
               className={cn(
-                "relative h-16 w-24 shrink-0 overflow-hidden rounded-md border-2 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                "relative h-16 w-24 shrink-0 overflow-hidden rounded-md border-2 bg-muted transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                 i === index
                   ? "border-brand"
                   : "border-transparent opacity-70 hover:opacity-100",
               )}
             >
-              <Image
+              <ImageWithLoader
                 src={m.url as string}
                 alt=""
                 fill
                 sizes="96px"
                 className="object-cover"
+                loaderSize={18}
               />
             </button>
           ))}
@@ -153,24 +157,17 @@ function Figure({
   label,
   value,
   hint,
-  accent,
 }: {
   label: string;
   value: React.ReactNode;
   hint?: React.ReactNode;
-  accent?: boolean;
 }) {
   return (
     <div className="bg-card p-4">
       <dt className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
         {label}
       </dt>
-      <dd
-        className={cn(
-          "mt-1 text-lg font-semibold tracking-tight text-ink tabular",
-          accent && "text-emerald-700",
-        )}
-      >
+      <dd className="mt-1 break-words text-lg font-semibold tracking-tight text-ink tabular">
         {value}
       </dd>
       {hint ? (
@@ -180,30 +177,155 @@ function Figure({
   );
 }
 
-function InvestCard({ estate }: { estate: RealEstate }) {
+function configuredMoney(
+  value: string | undefined,
+  currency: string | undefined,
+): string {
+  if (!value || !currency || !/^[A-Za-z]{3}$/.test(currency)) return "—";
+  try {
+    const parsed = parseDecimal(value);
+    if (parsed.scale > 8) return "—";
+    const fraction = value.trim().split(".")[1]?.replace(/0+$/, "") ?? "";
+    return formatMoney(value, currency, {
+      decimals: Math.max(2, fraction.length),
+    });
+  } catch {
+    return "—";
+  }
+}
+
+function configuredPercent(value: string | undefined): string {
+  if (!value) return "—";
+  try {
+    const parsed = parseDecimal(value);
+    if (parsed.scale > 8) return "—";
+    const fraction = value.trim().split(".")[1]?.replace(/0+$/, "") ?? "";
+    return formatPercent(value, Math.max(2, fraction.length));
+  } catch {
+    return "—";
+  }
+}
+
+function availableShares(estate: RealEstate): string | null {
+  const total = estate.configuration?.total_shares;
+  const sold = estate.progression?.tokens_sold;
+  if (
+    !total ||
+    typeof sold !== "number" ||
+    !Number.isSafeInteger(sold) ||
+    sold < 0
+  )
+    return null;
+  try {
+    const parsed = parseDecimal(total);
+    const divisor = 10n ** BigInt(parsed.scale);
+    if (parsed.int < 0n || parsed.int % divisor !== 0n) return null;
+    const left = parsed.int / divisor - BigInt(sold);
+    return (left > 0n ? left : 0n).toString();
+  } catch {
+    return null;
+  }
+}
+
+function hasUsablePrice(estate: RealEstate): boolean {
+  const price = estate.configuration?.price_per_share;
+  const currency = estate.configuration?.currency_code?.trim();
+  if (!price || !currency || !/^[A-Za-z]{3}$/.test(currency)) return false;
+  try {
+    const parsed = parseDecimal(price);
+    return parsed.int > 0n && parsed.scale <= 8;
+  } catch {
+    return false;
+  }
+}
+
+function InvestCard({
+  estate,
+  onRetry,
+}: {
+  estate: RealEstate;
+  onRetry: () => void;
+}) {
   const session = useSession();
   const cfg = estate.configuration;
-  const currency = cfg?.currency_code || "EUR";
+  const currency = cfg?.currency_code?.trim();
   const funded = fundingPercent(estate);
-  const left = remainingShares(
-    cfg?.total_shares,
-    estate.progression?.tokens_sold,
-  );
+  const left = availableShares(estate);
   const fundraising = estate.status === "fundraising";
   const buyHref = `/real-estate/${estate.id}/buy`;
 
   let action: React.ReactNode;
   if (!session.ready || (session.isAuthenticated && session.userLoading)) {
     action = <Skeleton className="h-10 w-full" />;
+  } else if (session.isAuthenticated && session.isStaff) {
+    action = (
+      <>
+        <div className="flex gap-2 rounded-md bg-muted p-3 text-xs text-muted-foreground">
+          <Info className="mt-0.5 size-4 shrink-0" aria-hidden />
+          Staff accounts cannot subscribe to offerings. Manage this asset from
+          the back office.
+        </div>
+        <Button asChild variant="outline" className="h-11 w-full">
+          <Link href={`/admin/assets/${estate.id}`}>
+            Open in back office <ChevronRight />
+          </Link>
+        </Button>
+      </>
+    );
+  } else if (!fundraising) {
+    action = (
+      <>
+        <p className="text-sm font-medium text-ink">
+          {estate.status === "published"
+            ? "Subscriptions not open"
+            : "Subscriptions closed"}
+        </p>
+        <p className="text-xs text-muted-foreground">
+          {estate.status === "published"
+            ? "This offering is published but the subscription period has not opened yet."
+            : "This offering is not open for subscription."}
+        </p>
+        <Button asChild variant="outline" className="h-11 w-full">
+          <Link href="/explore">Explore other offerings</Link>
+        </Button>
+      </>
+    );
+  } else if (left === "0") {
+    action = (
+      <>
+        <p className="text-sm font-medium text-ink">Fully subscribed</p>
+        <p className="text-xs text-muted-foreground">
+          No shares are currently available.
+        </p>
+        <Button asChild variant="outline" className="h-11 w-full">
+          <Link href="/explore">Explore other offerings</Link>
+        </Button>
+      </>
+    );
+  } else if (left === null || !hasUsablePrice(estate)) {
+    action = (
+      <>
+        <p className="text-sm font-medium text-ink">
+          Subscription information unavailable
+        </p>
+        <p className="text-xs text-muted-foreground">
+          The price or available shares cannot be confirmed. Refresh the
+          offering before continuing.
+        </p>
+        <Button variant="outline" className="h-11 w-full" onClick={onRetry}>
+          Retry
+        </Button>
+      </>
+    );
   } else if (!session.isAuthenticated) {
     action = (
       <>
         <Button
           asChild
-          className="h-10 w-full bg-brand text-brand-foreground hover:bg-brand-light"
+          className="h-11 w-full bg-brand text-brand-foreground hover:bg-brand-light"
         >
           <Link href={`/sign-in?callbackUrl=${encodeURIComponent(buyHref)}`}>
-            <Lock /> Sign in to invest
+            <Lock /> Sign in to continue
           </Link>
         </Button>
         <p className="text-center text-xs text-muted-foreground">
@@ -217,32 +339,29 @@ function InvestCard({ estate }: { estate: RealEstate }) {
         </p>
       </>
     );
-  } else if (session.isStaff) {
+  } else if (
+    !session.user ||
+    !session.isInvestor ||
+    !session.user.kyc_status ||
+    (session.user.kyc_status === "verified" &&
+      !!session.user.kyc_expires_at &&
+      !Number.isFinite(Date.parse(session.user.kyc_expires_at)))
+  ) {
     action = (
       <>
-        <div className="flex gap-2 rounded-md bg-muted p-3 text-xs text-muted-foreground">
-          <Info className="mt-0.5 size-4 shrink-0" aria-hidden />
-          Staff accounts cannot subscribe to offerings. Manage this asset from
-          the back office.
-        </div>
-        <Button asChild variant="outline" className="h-10 w-full">
-          <Link href={`/admin/assets/${estate.id}`}>
-            Open in back office <ChevronRight />
-          </Link>
-        </Button>
-      </>
-    );
-  } else if (!fundraising) {
-    action = (
-      <>
-        <Button className="h-10 w-full" disabled>
-          Subscriptions closed
-        </Button>
-        <p className="text-center text-xs text-muted-foreground">
-          {estate.status === "published"
-            ? "This offering is published but the subscription period has not opened yet."
-            : "This offering is not open for subscription."}
+        <p className="text-sm font-medium text-ink">
+          Account information unavailable
         </p>
+        <p className="text-xs text-muted-foreground">
+          Your account and verification status could not be confirmed.
+        </p>
+        <Button
+          variant="outline"
+          className="h-11 w-full"
+          onClick={() => void session.refreshUser()}
+        >
+          Retry account
+        </Button>
       </>
     );
   } else if (
@@ -255,34 +374,34 @@ function InvestCard({ estate }: { estate: RealEstate }) {
           <div>
             <p className="font-medium">Identity verification required</p>
             <p className="mt-0.5">
-              ERC-3643 tokens can only be held by verified investors.
+              Review your verification status before subscribing.
             </p>
             <div className="mt-2">
-              <KycStatusBadge status={session.user?.kyc_status ?? "none"} />
+              <KycStatusBadge
+                status={
+                  session.user.kyc_status === "verified"
+                    ? "expired"
+                    : (session.user.kyc_status ?? "none")
+                }
+              />
             </div>
           </div>
         </div>
         <Button
           asChild
-          className="h-10 w-full bg-brand text-brand-foreground hover:bg-brand-light"
+          className="h-11 w-full bg-brand text-brand-foreground hover:bg-brand-light"
         >
           <Link href="/verification">
-            <ShieldCheck /> Complete verification
+            <ShieldCheck /> View verification
           </Link>
         </Button>
       </>
-    );
-  } else if (left <= 0) {
-    action = (
-      <Button className="h-10 w-full" disabled>
-        Fully subscribed
-      </Button>
     );
   } else {
     action = (
       <Button
         asChild
-        className="h-10 w-full bg-brand text-brand-foreground hover:bg-brand-light"
+        className="h-11 w-full bg-brand text-brand-foreground hover:bg-brand-light"
       >
         <Link href={buyHref}>
           Invest <ArrowRight />
@@ -292,16 +411,22 @@ function InvestCard({ estate }: { estate: RealEstate }) {
   }
 
   return (
-    <Panel className="overflow-hidden">
-      <div className="border-b border-border bg-ink px-5 py-4 text-white">
+    <Panel className="overflow-hidden" aria-labelledby="subscription-heading">
+      <div className="hidden border-b border-border bg-ink px-5 py-4 text-white lg:block">
         <p className="text-xs text-white/60">Price per share</p>
         <p className="mt-0.5 text-2xl font-semibold tabular">
-          {formatMoney(cfg?.price_per_share, currency)}
+          {configuredMoney(cfg?.price_per_share, currency)}
         </p>
       </div>
       <PanelBody className="space-y-4">
+        <h2
+          id="subscription-heading"
+          className="text-sm font-medium text-ink lg:sr-only"
+        >
+          Subscription
+        </h2>
         {funded !== null ? (
-          <div>
+          <div className="hidden lg:block">
             <div className="flex items-baseline justify-between text-xs">
               <span className="text-muted-foreground">Subscribed</span>
               <span className="font-semibold text-ink tabular">
@@ -326,35 +451,13 @@ function InvestCard({ estate }: { estate: RealEstate }) {
         <KeyValueList
           items={[
             {
-              label: "Target yield",
-              value:
-                typeof cfg?.yield === "number" ? formatPercent(cfg.yield) : "—",
-            },
-            {
-              label: "Distributions",
-              value: formatFrequency(
-                cfg?.payment_frequency,
-                cfg?.payment_frequency_type,
-              ),
+              label: "Minimum investment",
+              value: configuredMoney(cfg?.min_investment, currency),
             },
             {
               label: "Shares available",
-              value: cfg?.total_shares ? formatNumber(left) : "—",
+              value: left === null ? "Unavailable" : formatNumber(left),
             },
-            {
-              label: "Max. per investor",
-              value: cfg?.max_shares_per_investor
-                ? `${formatNumber(cfg.max_shares_per_investor)} shares`
-                : "—",
-            },
-            ...(cfg?.min_investment
-              ? [
-                  {
-                    label: "Min. investment",
-                    value: formatMoney(cfg.min_investment, cfg.currency_code),
-                  },
-                ]
-              : []),
           ]}
         />
         <div className="space-y-2">{action}</div>
@@ -441,20 +544,7 @@ function TokenPanel({ estate }: { estate: RealEstate }) {
 }
 
 function DetailSkeleton() {
-  return (
-    <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
-      <span className="sr-only">Loading…</span>
-      <Skeleton className="h-4 w-48" />
-      <Skeleton className="mt-4 h-9 w-80" />
-      <div className="mt-8 grid gap-8 lg:grid-cols-[1fr_360px]">
-        <div className="space-y-6">
-          <Skeleton className="aspect-[16/9] rounded-lg" />
-          <Skeleton className="h-24 rounded-lg" />
-        </div>
-        <Skeleton className="h-96 rounded-lg" />
-      </div>
-    </div>
-  );
+  return <PageLoader label="Loading offering…" className="min-h-[60vh]" />;
 }
 
 function NotFoundState() {
@@ -480,6 +570,7 @@ function NotFoundState() {
 
 export default function RealEstateDetailPage() {
   const params = useParams<{ id: string }>();
+  const session = useSession();
   const id = Number(params.id);
   const validId = Number.isInteger(id) && id > 0;
   const {
@@ -512,10 +603,37 @@ export default function RealEstateDetailPage() {
 
   const cfg = estate.configuration;
   const spec = estate.specification;
-  const currency = cfg?.currency_code || "EUR";
+  const currency = cfg?.currency_code?.trim();
   const location = estateLocation(estate);
   const title = estate.title || `Offering #${estate.id}`;
-  const terms = offeringTerms(cfg);
+  const feeRates: Record<string, string | undefined> = {
+    "Entry fee": cfg?.entry_fee_rate,
+    "Management fee": cfg?.mgmt_fee_rate,
+    "Exit fee": cfg?.exit_fee_rate,
+  };
+  const terms = offeringTerms(cfg)
+    .filter((item) => item.label !== "Minimum investment")
+    .map((item) => {
+      if (item.label === "Maximum investment") {
+        return {
+          ...item,
+          value: currency
+            ? configuredMoney(cfg?.max_investment, currency)
+            : "Currency unavailable",
+        };
+      }
+      if (item.label in feeRates) {
+        const rate = configuredPercent(feeRates[item.label]);
+        return {
+          ...item,
+          value:
+            item.label === "Management fee" && rate !== "—"
+              ? `${rate} p.a.`
+              : rate,
+        };
+      }
+      return item;
+    });
 
   const specItems = [
     spec?.surface_area != null && {
@@ -584,7 +702,7 @@ export default function RealEstateDetailPage() {
               {estateTypeLabel(estate.estate_type, estate.estate_type_id)}
             </span>
           </div>
-          <h1 className="mt-2 text-2xl font-semibold text-ink sm:text-3xl">
+          <h1 className="mt-3 break-words font-editorial text-4xl font-normal tracking-tight text-ink sm:text-5xl">
             {title}
           </h1>
           {location ? (
@@ -595,27 +713,24 @@ export default function RealEstateDetailPage() {
         </div>
       </header>
 
-      <div className="mt-6 grid gap-8 lg:grid-cols-[minmax(0,1fr)_360px]">
-        <div className="min-w-0 space-y-6">
+      <div className="mt-6 grid gap-6 lg:grid-cols-[minmax(0,1fr)_360px] lg:gap-x-8">
+        <div className="min-w-0 space-y-6 lg:col-start-1 lg:row-start-1">
           <Gallery estate={estate} />
 
           <dl className="grid grid-cols-2 gap-px overflow-hidden rounded-lg border border-border bg-border sm:grid-cols-3">
             <Figure
               label="Total valuation"
-              value={formatMoney(cfg?.total_valuation, currency, {
-                decimals: 0,
-              })}
+              value={configuredMoney(cfg?.total_valuation, currency)}
             />
             <Figure
               label="Price per share"
-              value={formatMoney(cfg?.price_per_share, currency)}
+              value={configuredMoney(cfg?.price_per_share, currency)}
             />
             <Figure
               label="Target yield"
               value={
                 typeof cfg?.yield === "number" ? formatPercent(cfg.yield) : "—"
               }
-              accent
             />
             <Figure
               label="Total shares"
@@ -634,11 +749,13 @@ export default function RealEstateDetailPage() {
               hint="shares"
             />
           </dl>
+        </div>
 
-          <div className="lg:hidden">
-            <InvestCard estate={estate} />
-          </div>
+        <aside className="min-w-0 lg:sticky lg:top-24 lg:col-start-2 lg:row-span-2 lg:row-start-1 lg:self-start">
+          <InvestCard estate={estate} onRetry={() => void refetch()} />
+        </aside>
 
+        <div className="min-w-0 space-y-6 lg:col-start-1 lg:row-start-2">
           <Panel>
             <PanelHeader title="Investment overview" />
             <PanelBody>
@@ -656,14 +773,24 @@ export default function RealEstateDetailPage() {
                   Published on {formatDate(estate.published_at)}
                 </p>
               ) : null}
+              <div className="mt-4 border-l-2 border-amber-500 pl-3">
+                <h3 className="text-sm font-medium text-ink">
+                  Offering documents unavailable
+                </h3>
+                <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+                  The offering documents and full legal terms are not available
+                  here. Rights attached to shares, risks and exit conditions
+                  depend on those terms.
+                </p>
+              </div>
             </PanelBody>
           </Panel>
 
           {terms.length ? (
             <Panel>
               <PanelHeader
-                title="Terms & fees"
-                description="Investment limits and charges set by the issuer"
+                title="Configured limits & fees"
+                description="Figures provided in the offering configuration, not the full legal terms"
               />
               <PanelBody className="py-2">
                 <KeyValueList items={terms} columns={2} />
@@ -726,9 +853,20 @@ export default function RealEstateDetailPage() {
             </Panel>
           </div>
 
-          <TokenPanel estate={estate} />
+          <details className="group rounded-md border border-border bg-card">
+            <summary className="flex min-h-12 cursor-pointer list-none items-center justify-between gap-4 px-5 py-3 text-sm font-medium text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+              Technical details
+              <ChevronDown
+                className="size-4 shrink-0 transition-transform group-open:rotate-180 motion-reduce:transition-none"
+                aria-hidden
+              />
+            </summary>
+            <div className="border-t border-border p-3 sm:p-5">
+              <TokenPanel estate={estate} />
+            </div>
+          </details>
 
-          {address ? (
+          {session.isStaff && address ? (
             <Panel>
               <PanelHeader
                 title="Registered address"
@@ -756,12 +894,6 @@ export default function RealEstateDetailPage() {
             Past performance is not a reliable indicator of future results.
           </p>
         </div>
-
-        <aside className="hidden lg:block">
-          <div className="sticky top-24">
-            <InvestCard estate={estate} />
-          </div>
-        </aside>
       </div>
     </div>
   );

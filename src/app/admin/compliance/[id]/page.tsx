@@ -10,7 +10,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { ConfirmDialog } from "@/components/app/confirm-dialog";
 import { FormField } from "@/components/app/form-field";
@@ -36,22 +36,19 @@ import {
   useSyncKycOnChain,
 } from "@/lib/api/hooks";
 import type { KycOnChainSyncResponse, KycVerification } from "@/lib/api/types";
+import { useSession } from "@/lib/auth/session-context";
 import { formatDate, formatDateTime } from "@/lib/format";
-import {
-  defaultKycExpiry,
-  expiryDateToIso,
-  isKycExpired,
-  needsOnChainSync,
-} from "@/lib/kyc-review";
+import { defaultKycExpiry, expiryDateToIso } from "@/lib/kyc-review";
 import { countryName, countryNumeric } from "@/lib/reference";
 import type { TimelineStep } from "@/lib/status";
 import { StepTimeline } from "../../_components/step-timeline";
 
 export default function KycFilePage() {
+  const { isAdmin, userLoading } = useSession();
   const params = useParams<{ id: string }>();
   const id = Number(params.id);
-  const valid = Number.isInteger(id) && id > 0;
-  const kyc = useKyc(valid ? id : undefined);
+  const valid = Number.isSafeInteger(id) && id > 0;
+  const kyc = useKyc(valid && isAdmin ? id : undefined);
 
   const crumbs = [
     { label: "Back office", href: "/admin" },
@@ -59,6 +56,17 @@ export default function KycFilePage() {
     { label: `File #${params.id}` },
   ];
 
+  if (!isAdmin && userLoading) return <PageSkeleton />;
+  if (!isAdmin) {
+    return (
+      <Panel>
+        <EmptyState
+          title="Administrator access required"
+          description="KYC files are available to administrators only."
+        />
+      </Panel>
+    );
+  }
   if (!valid || kyc.isError) {
     const notFound =
       !valid || (kyc.error instanceof ApiError && kyc.error.status === 404);
@@ -78,105 +86,201 @@ export default function KycFilePage() {
               }
             />
           ) : (
-            <ErrorState error={kyc.error} onRetry={() => kyc.refetch()} />
+            <ErrorState error={kyc.error} onRetry={() => void kyc.refetch()} />
           )}
         </Panel>
       </>
     );
   }
-  if (kyc.isPending) return <PageSkeleton />;
-  return <KycFile file={kyc.data} crumbs={crumbs} />;
+  if (kyc.isPending || !kyc.data) return <PageSkeleton />;
+  return (
+    <KycFile
+      key={kyc.data.id}
+      file={kyc.data}
+      crumbs={crumbs}
+      refreshFile={() => kyc.refetch()}
+    />
+  );
 }
 
 type Dialog = "approve" | "reject" | "revoke" | "sync" | null;
+type SyncNotice = { kind: "failed" | "unknown"; message: string };
 
 function KycFile({
   file,
   crumbs,
+  refreshFile,
 }: {
   file: KycVerification;
   crumbs: { label: string; href?: string }[];
+  refreshFile: () => Promise<{
+    data: KycVerification | undefined;
+    isError: boolean;
+  }>;
 }) {
   const [dialog, setDialog] = useState<Dialog>(null);
   const [expiry, setExpiry] = useState(defaultKycExpiry);
   const [reason, setReason] = useState("");
   const [formError, setFormError] = useState<string | null>(null);
+  const [requestError, setRequestError] = useState<string | null>(null);
+  const [expectedDecision, setExpectedDecision] = useState<string | null>(null);
+  const [syncNotice, setSyncNotice] = useState<SyncNotice | null>(null);
   const [syncResult, setSyncResult] = useState<KycOnChainSyncResponse | null>(
     null,
   );
+  const actionLock = useRef(false);
 
   const approve = useApproveKyc();
   const reject = useRejectKyc();
   const revoke = useRevokeKyc();
   const sync = useSyncKycOnChain();
 
-  const submitted = file.status === "submitted";
-  const approved = file.status === "approved";
-  const syncNeeded = needsOnChainSync(file);
-  const expired = approved && isKycExpired(file);
-  const onChain = file.kyc_status === "verified";
+  const waitingDecision =
+    expectedDecision !== null && file.status !== expectedDecision;
+  const submitted = file.status === "submitted" && !waitingDecision;
+  const approved = file.status === "approved" && !waitingDecision;
+  const expiryTime = file.expires_at ? Date.parse(file.expires_at) : NaN;
+  const expiryKnown = Number.isFinite(expiryTime);
+  const expired = expiryKnown && expiryTime <= Date.now();
+  const accountApproved = file.kyc_status === "approved";
+  const accountVerified = file.kyc_status === "verified";
+  const accountStatusKnown = [
+    "none",
+    "pending",
+    "approved",
+    "verified",
+    "rejected",
+    "revoked",
+    "expired",
+  ].includes(file.kyc_status ?? "");
+  const syncConfirmed = approved && syncResult?.kyc_status === "verified";
+  const canSync = approved && expiryKnown && !expired && accountApproved;
+  const pending =
+    approve.isPending || reject.isPending || revoke.isPending || sync.isPending;
 
-  const open = (d: Dialog) => {
+  useEffect(() => {
+    if (expectedDecision === file.status) setExpectedDecision(null);
+  }, [expectedDecision, file.status]);
+
+  const refresh = async () => {
+    const result = await refreshFile();
+    if (!result.isError && result.data) setSyncNotice(null);
+  };
+  const open = (next: Dialog) => {
     setFormError(null);
-    setReason("");
-    if (d === "approve") setExpiry(defaultKycExpiry());
-    setDialog(d);
+    setRequestError(null);
+    setDialog(next);
   };
   const close = () => setDialog(null);
-  const fail = (title: string) => (err: unknown) =>
-    toast.error(title, { description: errorMessage(err) });
+  const fail = (title: string) => (error: unknown) => {
+    setRequestError(errorMessage(error));
+    toast.error(title, { description: errorMessage(error) });
+  };
+  const settled = () => {
+    actionLock.current = false;
+  };
+  const recorded = (status: string, message: string) => {
+    setExpectedDecision(status);
+    setSyncResult(null);
+    setSyncNotice(null);
+    setReason("");
+    close();
+    toast.success(message);
+    void refreshFile();
+  };
 
   const runApprove = () => {
-    const iso = expiryDateToIso(expiry);
-    if (!iso || new Date(iso).getTime() <= Date.now()) {
-      setFormError("Choose an expiry date in the future.");
+    if (pending || actionLock.current) return;
+    if (!submitted) {
+      setRequestError("The file status changed. Refresh it before deciding.");
       return;
     }
+    const iso = expiryDateToIso(expiry);
+    if (!iso || new Date(iso).getTime() <= Date.now()) {
+      setFormError("Choose a valid expiry date in the future.");
+      return;
+    }
+    actionLock.current = true;
+    setRequestError(null);
     approve.mutate(
       { id: file.id, expiresAt: iso },
       {
-        onSuccess: () => {
-          toast.success("KYC approved", {
-            description: "Register the investor on-chain to enable investing.",
-          });
-          close();
-        },
+        onSuccess: () =>
+          recorded(
+            "approved",
+            "KYC approved; registration is a separate step.",
+          ),
         onError: fail("Approval failed"),
+        onSettled: settled,
       },
     );
   };
 
   const runWithReason = (kind: "reject" | "revoke") => {
-    const text = reason.trim();
-    if (text.length < 3) {
-      setFormError(
-        "A reason is required; it is kept in the compliance record.",
-      );
+    if (pending || actionLock.current) return;
+    if ((kind === "reject" && !submitted) || (kind === "revoke" && !approved)) {
+      setRequestError("The file status changed. Refresh it before deciding.");
       return;
     }
-    const m = kind === "reject" ? reject : revoke;
-    m.mutate(
+    const text = reason.trim();
+    if (text.length < 3) {
+      setFormError("Enter a reason of at least 3 characters.");
+      return;
+    }
+    const mutation = kind === "reject" ? reject : revoke;
+    actionLock.current = true;
+    setRequestError(null);
+    mutation.mutate(
       { id: file.id, reason: text },
       {
-        onSuccess: () => {
-          toast.success(kind === "reject" ? "KYC rejected" : "KYC revoked");
-          close();
-        },
+        onSuccess: () =>
+          recorded(
+            kind === "reject" ? "rejected" : "revoked",
+            kind === "reject" ? "KYC rejected" : "KYC revoked",
+          ),
         onError: fail(
           kind === "reject" ? "Rejection failed" : "Revocation failed",
         ),
+        onSettled: settled,
       },
     );
   };
 
   const runSync = () => {
+    if (pending || actionLock.current) return;
+    if (!canSync || expiryTime <= Date.now()) {
+      setRequestError(
+        "The file, account status or expiry changed. Refresh before registering.",
+      );
+      return;
+    }
+    actionLock.current = true;
+    setRequestError(null);
+    setSyncNotice(null);
     sync.mutate(file.id, {
-      onSuccess: (res) => {
-        setSyncResult(res as KycOnChainSyncResponse);
-        toast.success("Investor registered on-chain");
+      onSuccess: (value) => {
+        const result = value as KycOnChainSyncResponse | undefined;
+        if (
+          result?.user_id === file.user_id &&
+          result.kyc_status === "verified"
+        ) {
+          setSyncResult(result);
+          toast.success("Registration confirmed by the sync response");
+        } else {
+          setSyncResult(null);
+          setSyncNotice({
+            kind: "unknown",
+            message:
+              "The response did not confirm the account's registration. Refresh the file before retrying.",
+          });
+        }
         close();
       },
-      onError: fail("On-chain registration failed"),
+      onError: (error) => {
+        setSyncNotice({ kind: "failed", message: errorMessage(error) });
+        fail("On-chain registration failed")(error);
+      },
+      onSettled: settled,
     });
   };
 
@@ -185,51 +289,57 @@ function KycFile({
       key: "submitted",
       label: "Submitted",
       state: "done",
-      hint: formatDateTime(file.submitted_at ?? file.created_at),
+      hint: file.submitted_at
+        ? formatDateTime(file.submitted_at)
+        : "Submission date unavailable",
     },
     {
       key: "decision",
       label:
         file.status === "rejected"
           ? "Rejected"
-          : submitted
-            ? "Compliance decision"
-            : "Approved",
+          : file.status === "revoked"
+            ? "Revoked"
+            : submitted
+              ? "Compliance decision"
+              : file.status === "approved"
+                ? "Approved"
+                : "Decision",
       state: submitted
         ? "current"
-        : file.status === "rejected"
+        : file.status === "rejected" || file.status === "revoked"
           ? "failed"
-          : "done",
+          : file.status === "approved"
+            ? "done"
+            : "upcoming",
       hint: file.decided_at ? formatDateTime(file.decided_at) : undefined,
     },
     {
       key: "onchain",
-      label: "On-chain registration",
-      state: onChain
-        ? "done"
-        : approved
-          ? "current"
-          : file.status === "revoked" && file.kyc_verified_at
-            ? "done"
-            : "upcoming",
-      hint: file.kyc_verified_at
-        ? formatDateTime(file.kyc_verified_at)
-        : undefined,
+      label: "Registry confirmation",
+      state: syncConfirmed ? "done" : approved ? "current" : "upcoming",
+      hint: syncConfirmed
+        ? "Confirmed by the sync response"
+        : accountVerified
+          ? "Account reports verified; live registry verdict unavailable here"
+          : "Not confirmed by this view",
     },
-    ...(file.status === "revoked"
-      ? [
-          {
-            key: "revoked",
-            label: "Revoked",
-            state: "failed" as const,
-            hint: formatDateTime(file.revoked_at),
-          },
-        ]
-      : []),
   ];
 
-  const pending =
-    approve.isPending || reject.isPending || revoke.isPending || sync.isPending;
+  let syncBlockReason: string | null = null;
+  if (approved && !expiryKnown) {
+    syncBlockReason =
+      "Approval expiry is unavailable. Refresh the file before registering.";
+  } else if (approved && expired) {
+    syncBlockReason = "The approval has expired; registration is unavailable.";
+  } else if (approved && accountVerified) {
+    syncBlockReason =
+      "The account reports verified. This page does not provide an independent live registry verdict.";
+  } else if (approved && !accountApproved) {
+    syncBlockReason = accountStatusKnown
+      ? "The account status differs from the approval. Refresh the file before registering."
+      : "Account status is unavailable. Refresh the file before registering.";
+  }
 
   return (
     <>
@@ -237,9 +347,11 @@ function KycFile({
         eyebrow={`KYC file #${file.id}`}
         title={file.declared_full_name}
         description={
-          <span className="flex flex-wrap items-center gap-2">
+          <span className="flex flex-wrap items-center gap-2 break-all">
             <KycFileStatusBadge status={file.status} />
-            <span>{file.email}</span>
+            <span>
+              {file.email} · User #{file.user_id}
+            </span>
           </span>
         }
         breadcrumbs={crumbs}
@@ -247,55 +359,111 @@ function KycFile({
           <>
             {submitted ? (
               <>
-                <Button variant="outline" onClick={() => open("reject")}>
+                <Button
+                  variant="outline"
+                  onClick={() => open("reject")}
+                  disabled={pending}
+                >
                   <XCircle /> Reject
                 </Button>
                 <Button
                   className="bg-brand text-brand-foreground hover:bg-brand-light"
                   onClick={() => open("approve")}
+                  disabled={pending}
                 >
                   <CheckCircle2 /> Approve
                 </Button>
               </>
             ) : null}
             {approved ? (
-              <>
-                <Button variant="outline" onClick={() => open("revoke")}>
-                  <Ban /> Revoke
-                </Button>
-                {!onChain ? (
-                  <Button
-                    className="bg-brand text-brand-foreground hover:bg-brand-light"
-                    onClick={() => open("sync")}
-                    disabled={expired}
-                  >
-                    <Link2 /> Sync on-chain
-                  </Button>
-                ) : null}
-              </>
+              <Button
+                variant="outline"
+                onClick={() => open("revoke")}
+                disabled={pending}
+              >
+                <Ban /> Revoke
+              </Button>
             ) : null}
           </>
         }
       />
 
       <div className="space-y-6">
-        {approved && syncNeeded && !expired ? (
-          <Alert className="border-amber-200 bg-amber-50">
+        {waitingDecision ? (
+          <Alert>
             <ShieldAlert />
-            <AlertTitle>Action needed: on-chain registration</AlertTitle>
+            <AlertTitle>Decision recorded; file refresh pending</AlertTitle>
             <AlertDescription>
-              The file is approved but the investor is not yet registered in the
-              identity registry. Until then they cannot subscribe to offerings.
+              The latest file has not yet confirmed the decision. Refresh before
+              taking another action.
+              <div className="mt-3">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => void refresh()}
+                >
+                  Refresh file
+                </Button>
+              </div>
             </AlertDescription>
           </Alert>
         ) : null}
-        {expired ? (
-          <Alert variant="destructive">
+        {approved ? (
+          <Alert
+            variant={
+              syncNotice?.kind === "failed" || expired
+                ? "destructive"
+                : "default"
+            }
+          >
             <ShieldAlert />
-            <AlertTitle>Approval expired</AlertTitle>
+            <AlertTitle>
+              {sync.isPending
+                ? "Registration in progress"
+                : syncNotice?.kind === "failed"
+                  ? "Registration failed"
+                  : syncNotice?.kind === "unknown"
+                    ? "Registration outcome unavailable"
+                    : syncConfirmed
+                      ? "Registration confirmed"
+                      : expired
+                        ? "Approval expired"
+                        : "Registration status"}
+            </AlertTitle>
             <AlertDescription>
-              This approval expired on {formatDate(file.expires_at)}. The
-              investor must file a new verification.
+              {sync.isPending
+                ? "The registration request is being processed."
+                : syncNotice
+                  ? syncNotice.message
+                  : syncConfirmed
+                    ? "The sync response confirmed registration. Account and file updates may follow separately."
+                    : syncBlockReason
+                      ? syncBlockReason
+                      : "The file is approved and the account still reports approved. Registration has not been confirmed by this view."}
+              {syncNotice && syncBlockReason ? (
+                <p className="mt-2">{syncBlockReason}</p>
+              ) : null}
+              {!syncConfirmed ? (
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <Button
+                    onClick={() => open("sync")}
+                    disabled={
+                      !canSync || pending || syncNotice?.kind === "unknown"
+                    }
+                    className="bg-brand text-brand-foreground hover:bg-brand-light"
+                  >
+                    <Link2 />{" "}
+                    {syncNotice?.kind === "failed"
+                      ? "Retry registration"
+                      : "Sync on-chain"}
+                  </Button>
+                  {syncBlockReason || syncNotice?.kind === "unknown" ? (
+                    <Button variant="outline" onClick={() => void refresh()}>
+                      Refresh file
+                    </Button>
+                  ) : null}
+                </div>
+              ) : null}
             </AlertDescription>
           </Alert>
         ) : null}
@@ -316,7 +484,14 @@ function KycFile({
             <PanelBody className="py-2">
               <KeyValueList
                 items={[
-                  { label: "Full name", value: file.declared_full_name },
+                  {
+                    label: "Full name",
+                    value: (
+                      <span className="break-all">
+                        {file.declared_full_name}
+                      </span>
+                    ),
+                  },
                   {
                     label: "Country of residence",
                     value: countryName(file.declared_country_code),
@@ -324,13 +499,14 @@ function KycFile({
                   },
                   {
                     label: "Submitted",
-                    value: formatDateTime(file.submitted_at ?? file.created_at),
+                    value: file.submitted_at
+                      ? formatDateTime(file.submitted_at)
+                      : "Unavailable",
                   },
                 ]}
               />
             </PanelBody>
           </Panel>
-
           <Panel>
             <PanelHeader title="User account" />
             <PanelBody className="py-2">
@@ -339,55 +515,48 @@ function KycFile({
                   { label: "User ID", value: `#${file.user_id}` },
                   {
                     label: "E-mail",
-                    value: (
-                      <a
-                        href={`mailto:${file.email}`}
-                        className="underline-offset-4 hover:underline"
-                      >
-                        {file.email}
-                      </a>
-                    ),
+                    value: <span className="break-all">{file.email}</span>,
                   },
                   {
                     label: "Account KYC status",
-                    value: file.kyc_status ? (
+                    value: accountStatusKnown ? (
                       <KycStatusBadge status={file.kyc_status} />
                     ) : (
-                      "—"
+                      "Unavailable"
                     ),
                   },
                   {
-                    label: "Verified on-chain",
-                    value: formatDateTime(file.kyc_verified_at),
+                    label: "Account verification date",
+                    value: file.kyc_verified_at
+                      ? formatDateTime(file.kyc_verified_at)
+                      : "Unavailable",
                   },
                 ]}
               />
             </PanelBody>
           </Panel>
-
           <Panel>
             <PanelHeader title="Decision" />
             <PanelBody className="py-2">
               <KeyValueList
                 items={[
-                  {
-                    label: "Decided",
-                    value: formatDateTime(file.decided_at),
-                  },
+                  { label: "Decided", value: formatDateTime(file.decided_at) },
                   {
                     label: "Decided by",
                     value: file.decided_by ? `User #${file.decided_by}` : "—",
                   },
                   {
                     label: "Valid until",
-                    value: formatDate(file.expires_at),
+                    value: expiryKnown
+                      ? formatDate(file.expires_at)
+                      : "Unavailable",
                   },
                   ...(file.rejection_reason
                     ? [
                         {
                           label: "Rejection reason",
                           value: (
-                            <span className="whitespace-pre-wrap font-normal">
+                            <span className="whitespace-pre-wrap break-all font-normal">
                               {file.rejection_reason}
                             </span>
                           ),
@@ -406,7 +575,7 @@ function KycFile({
                         {
                           label: "Revocation reason",
                           value: (
-                            <span className="whitespace-pre-wrap font-normal">
+                            <span className="whitespace-pre-wrap break-all font-normal">
                               {file.revocation_reason ?? "—"}
                             </span>
                           ),
@@ -417,12 +586,11 @@ function KycFile({
               />
             </PanelBody>
           </Panel>
-
           {syncResult ? (
             <Panel>
               <PanelHeader
-                title="On-chain registration"
-                description="Returned by the identity registry."
+                title="Registration response"
+                description="Returned by the sync operation in this session."
               />
               <PanelBody className="py-2">
                 <KeyValueList
@@ -440,7 +608,7 @@ function KycFile({
                       value: `${countryName(syncResult.country_code)} (${syncResult.country_numeric})`,
                     },
                     {
-                      label: "Status",
+                      label: "Account status returned",
                       value: <KycStatusBadge status={syncResult.kyc_status} />,
                     },
                     {
@@ -473,45 +641,69 @@ function KycFile({
 
       <ConfirmDialog
         open={dialog === "approve"}
-        onOpenChange={(o) => !o && close()}
+        onOpenChange={(value) => !value && close()}
         title="Approve identity verification"
-        description={`Approve ${file.declared_full_name}'s file. The investor will then need to be registered on-chain.`}
+        description={
+          <span className="break-all">
+            Approve {file.declared_full_name}&apos;s file for account #
+            {file.user_id}. Registration remains a separate step.
+          </span>
+        }
         confirmLabel="Approve"
         pending={pending}
         onConfirm={runApprove}
       >
-        <FormField
-          label="Approval valid until"
-          htmlFor="kyc-expiry"
-          required
-          error={formError ?? undefined}
-          hint="Defaults to one year. The investor must renew after this date."
-        >
+        <FormField label="Approval valid until" htmlFor="kyc-expiry" required>
           <Input
             id="kyc-expiry"
             type="date"
+            required
             value={expiry}
             min={new Date().toISOString().slice(0, 10)}
-            onChange={(e) => {
-              setExpiry(e.target.value);
+            aria-invalid={!!formError}
+            aria-describedby={
+              formError ? "kyc-expiry-error" : "kyc-expiry-hint"
+            }
+            onChange={(event) => {
+              setExpiry(event.target.value);
               setFormError(null);
             }}
           />
+          {formError ? (
+            <p
+              id="kyc-expiry-error"
+              className="text-xs text-red-600"
+              role="alert"
+            >
+              {formError}
+            </p>
+          ) : (
+            <p id="kyc-expiry-hint" className="text-xs text-muted-foreground">
+              The selected date is interpreted at 00:00 UTC and must be in the
+              future.
+            </p>
+          )}
         </FormField>
+        {requestError ? (
+          <p role="alert" className="text-sm text-red-700">
+            {requestError}
+          </p>
+        ) : null}
       </ConfirmDialog>
 
       <ConfirmDialog
         open={dialog === "reject" || dialog === "revoke"}
-        onOpenChange={(o) => !o && close()}
+        onOpenChange={(value) => !value && close()}
         title={
           dialog === "revoke"
             ? "Revoke identity verification"
             : "Reject identity verification"
         }
         description={
-          dialog === "revoke"
-            ? "The investor will no longer be able to subscribe. They may file a new verification afterwards."
-            : "The investor will be informed and may submit a new file."
+          <span className="break-all">
+            Record this decision for {file.declared_full_name}, account #
+            {file.user_id}. The investor may submit a new file.
+          </span>
         }
         confirmLabel={dialog === "revoke" ? "Revoke" : "Reject"}
         destructive
@@ -520,47 +712,58 @@ function KycFile({
           runWithReason(dialog === "revoke" ? "revoke" : "reject")
         }
       >
-        <FormField
-          label="Reason"
-          htmlFor="kyc-reason"
-          required
-          error={formError ?? undefined}
-          hint="Kept in the compliance record."
-        >
+        <FormField label="Reason" htmlFor="kyc-reason" required>
           <Textarea
             id="kyc-reason"
             value={reason}
+            required
             rows={4}
             maxLength={500}
-            onChange={(e) => {
-              setReason(e.target.value);
+            aria-invalid={!!formError}
+            aria-describedby={
+              formError ? "kyc-reason-error" : "kyc-reason-hint"
+            }
+            onChange={(event) => {
+              setReason(event.target.value);
               setFormError(null);
             }}
-            placeholder={
-              dialog === "revoke"
-                ? "e.g. Sanctions screening hit on periodic review"
-                : "e.g. Declared name does not match the identity document"
-            }
           />
+          {formError ? (
+            <p
+              id="kyc-reason-error"
+              className="text-xs text-red-600"
+              role="alert"
+            >
+              {formError}
+            </p>
+          ) : (
+            <p id="kyc-reason-hint" className="text-xs text-muted-foreground">
+              Kept in the compliance record.
+            </p>
+          )}
         </FormField>
+        {requestError ? (
+          <p role="alert" className="text-sm text-red-700">
+            {requestError}
+          </p>
+        ) : null}
       </ConfirmDialog>
 
       <ConfirmDialog
         open={dialog === "sync"}
-        onOpenChange={(o) => !o && close()}
+        onOpenChange={(value) => !value && close()}
         title="Register investor on-chain"
-        description={
-          <p>
-            Deploys the investor&apos;s ONCHAINID identity, issues the KYC claim
-            and registers it in the T-REX identity registry for{" "}
-            <strong>{countryName(file.declared_country_code)}</strong>. These
-            are blockchain transactions and take a few seconds.
-          </p>
-        }
+        description={`Register account #${file.user_id} for ${countryName(file.declared_country_code)}. This operation may perform blockchain transactions.`}
         confirmLabel="Register on-chain"
         pending={pending}
         onConfirm={runSync}
-      />
+      >
+        {requestError ? (
+          <p role="alert" className="text-sm text-red-700">
+            {requestError}
+          </p>
+        ) : null}
+      </ConfirmDialog>
     </>
   );
 }

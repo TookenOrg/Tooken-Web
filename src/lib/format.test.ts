@@ -4,10 +4,12 @@ import {
   compareDecimal,
   formatFrequency,
   formatMoney,
+  formatRecordedMoney,
   multiplyDecimal,
   parseDecimal,
   percentOf,
   remainingShares,
+  sepoliaExplorerUrl,
   shortenHash,
 } from "./format";
 
@@ -58,6 +60,13 @@ describe("display helpers", () => {
     expect(formatMoney(null)).toBe("—");
   });
 
+  it("does not assume a currency for recorded amounts", () => {
+    expect(formatRecordedMoney("10", "")).toBe("Currency unavailable");
+    expect(formatRecordedMoney("10", undefined)).toBe("Currency unavailable");
+    expect(formatRecordedMoney("10", "CHF")).toMatch(/CHF/);
+    expect(formatRecordedMoney(null, undefined)).toBe("—");
+  });
+
   it("shortens long hashes only", () => {
     expect(shortenHash("0x0059acCa9E938a97158c9676d776BCFc1f717bfA")).toBe(
       "0x0059ac…717bfA",
@@ -70,5 +79,21 @@ describe("display helpers", () => {
     expect(formatFrequency(4, "YEAR")).toBe("Quarterly");
     expect(formatFrequency(1, "month")).toBe("Monthly");
     expect(formatFrequency(1, "unknown")).toBe("—");
+  });
+
+  it("builds Sepolia Etherscan links for addresses and transaction hashes", () => {
+    const addr = "0x0059acCa9E938a97158c9676d776BCFc1f717bfA";
+    const tx =
+      "0x8f4e2a0c1d3b5e7a9f0c2d4e6b8a0c1d3e5f7a9b1c3d5e7f9a0b2c4d6e8f0a1b";
+    expect(sepoliaExplorerUrl(addr)).toBe(
+      `https://sepolia.etherscan.io/address/${addr}`,
+    );
+    expect(sepoliaExplorerUrl(tx)).toBe(
+      `https://sepolia.etherscan.io/tx/${tx}`,
+    );
+    expect(sepoliaExplorerUrl(tx, "none")).toBeNull();
+    expect(sepoliaExplorerUrl("ORD-2026-0001")).toBeNull();
+    expect(sepoliaExplorerUrl("0x1234")).toBeNull();
+    expect(sepoliaExplorerUrl(undefined)).toBeNull();
   });
 });
