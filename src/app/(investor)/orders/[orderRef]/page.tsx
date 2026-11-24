@@ -156,13 +156,15 @@ export default function OrderDetailPage() {
 
       <div className="space-y-6">
         <Panel>
-          <PanelHeader title="Current status" description={summary} />
-        </Panel>
-
-        <OrderPaymentSection order={order} />
-
-        <Panel>
-          <PanelHeader title="Progress" description={meta.description} />
+          <PanelHeader
+            title="Order progress"
+            description={
+              order.statusCode === "DELIVERY_FAILED" ||
+              order.statusCode === "REVERSAL_FAILED"
+                ? undefined
+                : summary
+            }
+          />
           <PanelBody>
             <OrderTimeline status={order.statusCode} />
             {order.statusCode === "DELIVERY_FAILED" ||
@@ -178,8 +180,10 @@ export default function OrderDetailPage() {
           </PanelBody>
         </Panel>
 
-        <div className="grid grid-cols-1 gap-6 lg:grid-cols-5">
-          <div className="min-w-0 space-y-6 lg:col-span-3">
+        <OrderPaymentSection order={order} />
+
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
+          <div className="min-w-0 space-y-6 lg:col-span-7">
             <Panel>
               <PanelHeader
                 title="Amount breakdown"
@@ -207,8 +211,8 @@ export default function OrderDetailPage() {
                     ...(order.fees?.length
                       ? order.fees.map((f) => ({
                           label: `${FEE_LABEL[f.code] ?? f.code} (${formatPercent(f.rate)})`,
-                          value: formatRecordedMoney(f.amount, cur),
                           hint: `on ${formatRecordedMoney(f.baseAmount, cur)}`,
+                          value: formatRecordedMoney(f.amount, cur),
                         }))
                       : [
                           {
@@ -228,9 +232,7 @@ export default function OrderDetailPage() {
                 </div>
               </PanelBody>
             </Panel>
-          </div>
 
-          <div className="min-w-0 space-y-6 lg:col-span-2">
             <Panel>
               <PanelHeader
                 title="On-chain delivery"
@@ -269,12 +271,14 @@ export default function OrderDetailPage() {
                 />
               </PanelBody>
             </Panel>
+          </div>
 
+          <div className="min-w-0 space-y-6 lg:col-span-5">
             <Panel className="overflow-hidden">
               <PanelHeader title="Offering" />
               <Link
                 href={`/real-estate/${order.realEstateId}`}
-                className="group relative block aspect-[16/10] overflow-hidden border-b border-border bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+                className="group relative block aspect-[16/9] overflow-hidden border-b border-border bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
                 aria-label={`View ${title}`}
               >
                 {estate.isLoading ? (
@@ -289,7 +293,7 @@ export default function OrderDetailPage() {
                     src={cover}
                     alt={title}
                     fill
-                    sizes="(min-width: 1024px) 380px, 100vw"
+                    sizes="(min-width: 1024px) 460px, 100vw"
                     className="object-cover transition duration-500 group-hover:scale-[1.02] motion-reduce:transition-none"
                     loaderSize={32}
                   />

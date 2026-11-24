@@ -1,6 +1,7 @@
 "use client";
 
 import { ArrowDown, ArrowRight, ArrowUpRight } from "lucide-react";
+import Image from "next/image";
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { ImageWithLoader } from "@/components/app/image-with-loader";
@@ -20,6 +21,7 @@ import { useSession } from "@/lib/auth/session-context";
 import { addDecimal, formatMoney, formatNumber } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
+const DEFAULT_HERO_IMAGE = "/hero-default.jpg";
 const LISTED = ["published", "fundraising", "funded", "closed"];
 const STEPS = [
   {
@@ -100,20 +102,32 @@ export default function LandingPage() {
       missingValuation,
     };
   }, [estates]);
-  const slides = offerings.filter((estate) => estateCover(estate));
-  const activeSlide = slides.length ? slide % slides.length : 0;
-  const hero = slides[activeSlide];
-  const cover = hero ? estateCover(hero) : undefined;
+  const forSaleSlides = useMemo(
+    () =>
+      isLoading || isError
+        ? []
+        : estates.filter(
+            (estate) =>
+              estate.status === "fundraising" && Boolean(estateCover(estate)),
+          ),
+    [estates, isError, isLoading],
+  );
+  const activeSlide = forSaleSlides.length ? slide % forSaleSlides.length : 0;
+  const hero = forSaleSlides[activeSlide] ?? null;
   const rotating =
-    slides.length > 1 && !hovered && !focused && !reducedMotion && visible;
+    forSaleSlides.length > 1 &&
+    !hovered &&
+    !focused &&
+    !reducedMotion &&
+    visible;
   useEffect(() => {
     if (!rotating) return;
     const timer = window.setTimeout(
-      () => setSlide((activeSlide + 1) % slides.length),
+      () => setSlide((activeSlide + 1) % forSaleSlides.length),
       8000,
     );
     return () => window.clearTimeout(timer);
-  }, [rotating, activeSlide, slides.length]);
+  }, [rotating, activeSlide, forSaleSlides.length]);
 
   return (
     <>
@@ -162,69 +176,53 @@ export default function LandingPage() {
               }}
             >
               <div className="relative aspect-[5/4] overflow-hidden bg-muted lg:aspect-[5/5.3]">
-                {isLoading ? (
-                  <PageLoader
-                    label="Loading featured offerings…"
-                    className="h-full min-h-0 border border-border"
-                  />
-                ) : cover && hero ? (
-                  slides.map((estate, index) => (
-                    <div
-                      key={estate.id}
-                      aria-hidden={index !== activeSlide}
-                      className={cn(
-                        "absolute inset-0 transition-opacity duration-[1500ms] ease-in-out motion-reduce:transition-none",
-                        index === activeSlide
-                          ? "opacity-100"
-                          : "pointer-events-none opacity-0",
-                      )}
-                    >
-                      <ImageWithLoader
-                        src={estateCover(estate) as string}
-                        alt={estate.title || "Featured asset"}
-                        fill
-                        sizes="(min-width: 1024px) 50vw, 100vw"
+                {hero ? (
+                  forSaleSlides.map((estate, index) => {
+                    const isCurrent = index === activeSlide;
+                    return (
+                      <div
+                        key={estate.id}
+                        aria-hidden={!isCurrent}
                         className={cn(
-                          "object-cover transition-transform duration-[8000ms] ease-out motion-reduce:transform-none motion-reduce:transition-none",
-                          index === activeSlide ? "scale-[1.04]" : "scale-100",
+                          "absolute inset-0 transition-opacity duration-[1500ms] ease-in-out motion-reduce:transition-none",
+                          isCurrent
+                            ? "opacity-100"
+                            : "pointer-events-none opacity-0",
                         )}
-                        priority={index === 0}
-                        loading={index > 0 ? "eager" : undefined}
-                        loaderSize={44}
-                      />
-                    </div>
-                  ))
+                      >
+                        <ImageWithLoader
+                          src={estateCover(estate) as string}
+                          alt={estate.title || "Featured asset"}
+                          fill
+                          sizes="(min-width: 1024px) 50vw, 100vw"
+                          className={cn(
+                            "object-cover transition-transform duration-[8000ms] ease-out motion-reduce:transform-none motion-reduce:transition-none",
+                            isCurrent ? "scale-[1.04]" : "scale-100",
+                          )}
+                          loading="eager"
+                          loaderSize={44}
+                        />
+                      </div>
+                    );
+                  })
                 ) : (
-                  <div className="flex h-full flex-col justify-between border border-border bg-muted p-7 text-ink sm:p-10">
-                    <p className="font-mono text-xs text-muted-foreground">
-                      RWA / REAL-WORLD ASSETS
-                    </p>
-                    <div className="py-8">
-                      <p className="font-editorial text-4xl leading-tight tracking-tight sm:text-5xl">
-                        The asset is real.
-                        <br />
-                        <em className="text-amber-700">Ownership evolves.</em>
-                      </p>
-                      <p className="mt-6 max-w-xs text-sm leading-relaxed text-muted-foreground">
-                        A common token standard. An offering structure defined
-                        for each asset.
-                      </p>
-                    </div>
-                    <p className="border-t border-border pt-5 text-xs text-muted-foreground">
-                      ERC-3643 · Permissioned ownership
-                    </p>
-                  </div>
+                  <Image
+                    src={DEFAULT_HERO_IMAGE}
+                    alt="Contemporary architectural facade"
+                    fill
+                    preload
+                    sizes="(min-width: 1024px) 50vw, 100vw"
+                    className="object-cover"
+                  />
                 )}
-                {cover && hero ? (
+                {hero ? (
                   <div className="absolute top-4 left-4 z-10">
                     <RealEstateStatusBadge status={hero.status} />
                   </div>
                 ) : null}
-                {cover ? (
-                  <span className="absolute right-4 bottom-4 z-10 bg-background px-2.5 py-1.5 font-mono text-[10px] text-ink">
-                    ASSET SPOTLIGHT
-                  </span>
-                ) : null}
+                <span className="absolute right-4 bottom-4 z-10 bg-background px-2.5 py-1.5 font-mono text-[10px] text-ink">
+                  {hero ? "ASSET SPOTLIGHT" : "RWA / REAL-WORLD ASSETS"}
+                </span>
               </div>
               <figcaption
                 aria-live={rotating ? "off" : "polite"}
@@ -233,17 +231,17 @@ export default function LandingPage() {
               >
                 <div>
                   <p className="text-sm font-medium text-ink">
-                    {cover && hero
+                    {hero
                       ? hero.title
                       : "One standard. A wider asset universe."}
                   </p>
                   <p className="mt-1 text-xs text-muted-foreground">
-                    {cover && hero
+                    {hero
                       ? estateLocation(hero) || "View offering details"
                       : "Platform overview. Not an investment offering."}
                   </p>
                 </div>
-                {cover && hero ? (
+                {hero ? (
                   <Link
                     href={`/real-estate/${hero.id}`}
                     aria-label={`View ${hero.title || "featured asset"}`}

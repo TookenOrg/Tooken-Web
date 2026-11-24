@@ -45,23 +45,57 @@ describe("LandingPage asset spotlight", () => {
     vi.unstubAllGlobals();
   });
 
-  it("shows a platform overview without inventing an offering when no photo is available", () => {
+  it("shows the default presentation photo without Open for subscription badge when no fundraising offering is available", () => {
+    query.data = [
+      {
+        id: 1,
+        title: "Future offering",
+        status: "published",
+        imageurl: "/future.jpg",
+      },
+    ];
     render(<LandingPage />);
-    expect(screen.getByText("RWA / REAL-WORLD ASSETS")).toBeInTheDocument();
+    const figure = screen.getByRole("figure", { name: "Featured assets" });
+    expect(
+      within(figure).getByAltText("Contemporary architectural facade"),
+    ).toBeInTheDocument();
+    expect(
+      within(figure).getByText("RWA / REAL-WORLD ASSETS"),
+    ).toBeInTheDocument();
+    expect(
+      within(figure).queryByText("Open for subscription"),
+    ).not.toBeInTheDocument();
     expect(screen.getByText(/Not an investment offering/)).toBeInTheDocument();
     expect(
       screen.queryByRole("link", { name: /View featured asset/ }),
     ).not.toBeInTheDocument();
   });
 
-  it("shows loaders in the hero and below Explore the underlying assets while loading", () => {
+  it("keeps the default presentation photo in the hero while showing a loader below Explore the underlying assets", () => {
     query.isLoading = true;
     render(<LandingPage />);
-    expect(screen.getByText("Loading featured offerings…")).toBeInTheDocument();
+    const figure = screen.getByRole("figure", { name: "Featured assets" });
+    expect(
+      within(figure).getByAltText("Contemporary architectural facade"),
+    ).toBeInTheDocument();
+    expect(
+      within(figure).queryByText("Open for subscription"),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByText("Loading featured offerings…"),
+    ).not.toBeInTheDocument();
     expect(screen.getByText("Loading offerings…")).toBeInTheDocument();
   });
 
-  it("features an open subscription before a published offering and links to the real asset", () => {
+  it("replaces the presentation photo with the fundraising carousel once data loads, skipping published ones", () => {
+    query.isLoading = true;
+    const { rerender } = render(<LandingPage />);
+    const figure = screen.getByRole("figure", { name: "Featured assets" });
+    expect(
+      within(figure).getByAltText("Contemporary architectural facade"),
+    ).toBeInTheDocument();
+
+    query.isLoading = false;
     query.data = [
       {
         id: 1,
@@ -77,9 +111,18 @@ describe("LandingPage asset spotlight", () => {
         location: { city: "Luxembourg" },
       },
     ];
-    render(<LandingPage />);
-    const figure = screen.getByRole("figure");
+    rerender(<LandingPage />);
+
+    expect(
+      within(figure).queryByAltText("Contemporary architectural facade"),
+    ).not.toBeInTheDocument();
+    expect(
+      within(figure).queryByAltText("Future offering"),
+    ).not.toBeInTheDocument();
     expect(within(figure).getByAltText("River House")).toBeInTheDocument();
+    expect(
+      within(figure).getByText("Open for subscription"),
+    ).toBeInTheDocument();
     expect(
       within(figure).getByRole("link", { name: "View River House" }),
     ).toHaveAttribute("href", "/real-estate/2");
@@ -99,7 +142,7 @@ describe("LandingPage asset spotlight", () => {
     expect(screen.getByRole("button", { name: /Retry/ })).toBeInTheDocument();
   });
 
-  it("cycles through photographed assets without displaying controls", () => {
+  it("cycles strictly through photographed fundraising assets without displaying controls", () => {
     vi.useFakeTimers();
     query.data = [
       {
@@ -110,32 +153,44 @@ describe("LandingPage asset spotlight", () => {
       },
       {
         id: 2,
+        title: "Harbor Loft",
+        status: "fundraising",
+        imageurl: "/harbor.jpg",
+      },
+      {
+        id: 3,
         title: "Garden House",
         status: "published",
         imageurl: "/garden.jpg",
       },
-      { id: 3, title: "No photo", status: "published" },
+      { id: 4, title: "No photo", status: "fundraising" },
     ];
     render(<LandingPage />);
     const carousel = within(
       screen.getByRole("figure", { name: "Featured assets" }),
     );
+    expect(carousel.queryByRole("button")).not.toBeInTheDocument();
+    expect(
+      carousel.queryByAltText("Contemporary architectural facade"),
+    ).not.toBeInTheDocument();
+    expect(carousel.queryByAltText("Garden House")).not.toBeInTheDocument();
     expect(
       carousel.getByRole("link", { name: "View River House" }),
     ).toHaveAttribute("href", "/real-estate/1");
-    expect(carousel.queryByRole("button")).not.toBeInTheDocument();
+    expect(carousel.getByText("Open for subscription")).toBeInTheDocument();
+
     act(() => vi.advanceTimersByTime(8000));
-    expect(carousel.getByAltText("Garden House")).toBeInTheDocument();
     expect(
-      carousel.getByRole("link", { name: "View Garden House" }),
+      carousel.getByRole("link", { name: "View Harbor Loft" }),
     ).toHaveAttribute("href", "/real-estate/2");
+
     act(() => vi.advanceTimersByTime(8000));
     expect(
       carousel.getByRole("link", { name: "View River House" }),
-    ).toBeInTheDocument();
+    ).toHaveAttribute("href", "/real-estate/1");
   });
 
-  it("hides navigation when only one asset has a photo", () => {
+  it("hides navigation controls in the hero carousel", () => {
     query.data = [
       {
         id: 1,
@@ -161,9 +216,9 @@ describe("LandingPage asset spotlight", () => {
       },
       {
         id: 2,
-        title: "Garden House",
-        status: "published",
-        imageurl: "/garden.jpg",
+        title: "Harbor Loft",
+        status: "fundraising",
+        imageurl: "/harbor.jpg",
       },
     ];
     render(<LandingPage />);
@@ -171,12 +226,12 @@ describe("LandingPage asset spotlight", () => {
     const carousel = within(figure);
     act(() => vi.advanceTimersByTime(8000));
     expect(
-      carousel.getByRole("link", { name: "View Garden House" }),
+      carousel.getByRole("link", { name: "View Harbor Loft" }),
     ).toBeInTheDocument();
     fireEvent.mouseEnter(figure);
     act(() => vi.advanceTimersByTime(12000));
     expect(
-      carousel.getByRole("link", { name: "View Garden House" }),
+      carousel.getByRole("link", { name: "View Harbor Loft" }),
     ).toBeInTheDocument();
     fireEvent.mouseLeave(figure);
     act(() => vi.advanceTimersByTime(8000));
@@ -196,9 +251,9 @@ describe("LandingPage asset spotlight", () => {
       },
       {
         id: 2,
-        title: "Garden House",
-        status: "published",
-        imageurl: "/garden.jpg",
+        title: "Harbor Loft",
+        status: "fundraising",
+        imageurl: "/harbor.jpg",
       },
     ];
     render(<LandingPage />);
@@ -212,7 +267,7 @@ describe("LandingPage asset spotlight", () => {
     fireEvent.blur(link, { relatedTarget: document.body });
     act(() => vi.advanceTimersByTime(8000));
     expect(
-      carousel.getByRole("link", { name: "View Garden House" }),
+      carousel.getByRole("link", { name: "View Harbor Loft" }),
     ).toBeInTheDocument();
   });
 
@@ -273,9 +328,9 @@ describe("LandingPage asset spotlight", () => {
       },
       {
         id: 2,
-        title: "Garden House",
-        status: "published",
-        imageurl: "/garden.jpg",
+        title: "Harbor Loft",
+        status: "fundraising",
+        imageurl: "/harbor.jpg",
       },
     ];
     render(<LandingPage />);
@@ -286,6 +341,9 @@ describe("LandingPage asset spotlight", () => {
     expect(
       carousel.getByRole("link", { name: "View River House" }),
     ).toBeInTheDocument();
+    expect(
+      carousel.queryByRole("link", { name: "View Harbor Loft" }),
+    ).not.toBeInTheDocument();
     expect(
       carousel.queryByRole("button", { name: "Pause slideshow" }),
     ).not.toBeInTheDocument();
