@@ -10,6 +10,7 @@ describe("decideRoute", () => {
   it("lets anyone browse public pages", () => {
     expect(decideRoute("/", anonymous)).toEqual({ type: "next" });
     expect(decideRoute("/explore", anonymous)).toEqual({ type: "next" });
+    expect(decideRoute("/project", anonymous)).toEqual({ type: "next" });
     expect(decideRoute("/real-estate/1", anonymous)).toEqual({ type: "next" });
   });
 

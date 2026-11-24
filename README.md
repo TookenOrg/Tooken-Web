@@ -51,7 +51,7 @@ behind TLS-intercepting corporate proxies.
 ```text
 src/
   app/
-    (public)/      landing, /explore, /real-estate/[id]
+    (public)/      landing, /explore, /real-estate/[id], /project
     (auth)/        /sign-in, /sign-up, /logout
     (investor)/    /dashboard, /orders, /verification, /profile, /favorites, /real-estate/[id]/buy
     admin/         back office (/admin/compliance, /admin/platform and /admin/users are ADMIN only)
