@@ -22,6 +22,7 @@ import { addDecimal, formatMoney, formatNumber } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
 const DEFAULT_HERO_IMAGE = "/hero-default.jpg";
+const SLIDE_DURATION_MS = 8000;
 const LISTED = ["published", "fundraising", "funded", "closed"];
 const STEPS = [
   {
@@ -40,6 +41,8 @@ const STEPS = [
 
 export default function LandingPage() {
   const session = useSession();
+  const [introDone, setIntroDone] = useState(false);
+  const [introZooming, setIntroZooming] = useState(false);
   const [slide, setSlide] = useState(0);
   const [hovered, setHovered] = useState(false);
   const [focused, setFocused] = useState(false);
@@ -51,9 +54,11 @@ export default function LandingPage() {
     const updateVisibility = () => setVisible(!document.hidden);
     updateMotion();
     updateVisibility();
+    const frame = window.requestAnimationFrame(() => setIntroZooming(true));
     preference.addEventListener("change", updateMotion);
     document.addEventListener("visibilitychange", updateVisibility);
     return () => {
+      window.cancelAnimationFrame(frame);
       preference.removeEventListener("change", updateMotion);
       document.removeEventListener("visibilitychange", updateVisibility);
     };
@@ -112,19 +117,30 @@ export default function LandingPage() {
           ),
     [estates, isError, isLoading],
   );
+  useEffect(() => {
+    if (introDone || !visible) return;
+    const timer = window.setTimeout(
+      () => setIntroDone(true),
+      SLIDE_DURATION_MS,
+    );
+    return () => window.clearTimeout(timer);
+  }, [introDone, visible]);
+  const showingOfferings = introDone && forSaleSlides.length > 0;
   const activeSlide = forSaleSlides.length ? slide % forSaleSlides.length : 0;
-  const hero = forSaleSlides[activeSlide] ?? null;
+  const hero = showingOfferings ? (forSaleSlides[activeSlide] ?? null) : null;
   const rotating =
+    showingOfferings &&
     forSaleSlides.length > 1 &&
     !hovered &&
     !focused &&
     !reducedMotion &&
     visible;
+  const autoAdvancing = (!introDone && visible) || rotating;
   useEffect(() => {
     if (!rotating) return;
     const timer = window.setTimeout(
       () => setSlide((activeSlide + 1) % forSaleSlides.length),
-      8000,
+      SLIDE_DURATION_MS,
     );
     return () => window.clearTimeout(timer);
   }, [rotating, activeSlide, forSaleSlides.length]);
@@ -176,45 +192,53 @@ export default function LandingPage() {
               }}
             >
               <div className="relative aspect-[5/4] overflow-hidden bg-muted lg:aspect-[5/5.3]">
-                {hero ? (
-                  forSaleSlides.map((estate, index) => {
-                    const isCurrent = index === activeSlide;
-                    return (
-                      <div
-                        key={estate.id}
-                        aria-hidden={!isCurrent}
-                        className={cn(
-                          "absolute inset-0 transition-opacity duration-[1500ms] ease-in-out motion-reduce:transition-none",
-                          isCurrent
-                            ? "opacity-100"
-                            : "pointer-events-none opacity-0",
-                        )}
-                      >
-                        <ImageWithLoader
-                          src={estateCover(estate) as string}
-                          alt={estate.title || "Featured asset"}
-                          fill
-                          sizes="(min-width: 1024px) 50vw, 100vw"
-                          className={cn(
-                            "object-cover transition-transform duration-[8000ms] ease-out motion-reduce:transform-none motion-reduce:transition-none",
-                            isCurrent ? "scale-[1.04]" : "scale-100",
-                          )}
-                          loading="eager"
-                          loaderSize={44}
-                        />
-                      </div>
-                    );
-                  })
-                ) : (
+                <div
+                  aria-hidden={Boolean(hero)}
+                  className={cn(
+                    "absolute inset-0 z-[2] transition-opacity duration-[1500ms] ease-in-out motion-reduce:transition-none",
+                    hero ? "pointer-events-none opacity-0" : "opacity-100",
+                  )}
+                >
                   <Image
                     src={DEFAULT_HERO_IMAGE}
                     alt="Contemporary architectural facade"
                     fill
                     preload
                     sizes="(min-width: 1024px) 50vw, 100vw"
-                    className="object-cover"
+                    className={cn(
+                      "object-cover transition-transform duration-[8000ms] ease-out motion-reduce:transform-none motion-reduce:transition-none",
+                      !hero && introZooming ? "scale-[1.04]" : "scale-100",
+                    )}
                   />
-                )}
+                </div>
+                {forSaleSlides.map((estate, index) => {
+                  const isCurrent = Boolean(hero) && index === activeSlide;
+                  return (
+                    <div
+                      key={estate.id}
+                      aria-hidden={!isCurrent}
+                      className={cn(
+                        "absolute inset-0 transition-opacity duration-[1500ms] ease-in-out motion-reduce:transition-none",
+                        isCurrent
+                          ? "opacity-100"
+                          : "pointer-events-none opacity-0",
+                      )}
+                    >
+                      <ImageWithLoader
+                        src={estateCover(estate) as string}
+                        alt={estate.title || "Featured asset"}
+                        fill
+                        sizes="(min-width: 1024px) 50vw, 100vw"
+                        className={cn(
+                          "object-cover transition-transform duration-[8000ms] ease-out motion-reduce:transform-none motion-reduce:transition-none",
+                          isCurrent ? "scale-[1.04]" : "scale-100",
+                        )}
+                        loading="eager"
+                        loaderSize={44}
+                      />
+                    </div>
+                  );
+                })}
                 {hero ? (
                   <div className="absolute top-4 left-4 z-10">
                     <RealEstateStatusBadge status={hero.status} />
@@ -225,7 +249,7 @@ export default function LandingPage() {
                 </span>
               </div>
               <figcaption
-                aria-live={rotating ? "off" : "polite"}
+                aria-live={autoAdvancing ? "off" : "polite"}
                 aria-atomic="true"
                 className="flex min-h-20 items-start justify-between gap-4 border-b border-border py-4"
               >

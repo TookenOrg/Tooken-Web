@@ -46,6 +46,7 @@ describe("LandingPage asset spotlight", () => {
   });
 
   it("shows the default presentation photo without Open for subscription badge when no fundraising offering is available", () => {
+    vi.useFakeTimers();
     query.data = [
       {
         id: 1,
@@ -56,8 +57,11 @@ describe("LandingPage asset spotlight", () => {
     ];
     render(<LandingPage />);
     const figure = screen.getByRole("figure", { name: "Featured assets" });
+    act(() => vi.advanceTimersByTime(12000));
     expect(
-      within(figure).getByAltText("Contemporary architectural facade"),
+      within(figure).getByRole("img", {
+        name: "Contemporary architectural facade",
+      }),
     ).toBeInTheDocument();
     expect(
       within(figure).getByText("RWA / REAL-WORLD ASSETS"),
@@ -76,7 +80,9 @@ describe("LandingPage asset spotlight", () => {
     render(<LandingPage />);
     const figure = screen.getByRole("figure", { name: "Featured assets" });
     expect(
-      within(figure).getByAltText("Contemporary architectural facade"),
+      within(figure).getByRole("img", {
+        name: "Contemporary architectural facade",
+      }),
     ).toBeInTheDocument();
     expect(
       within(figure).queryByText("Open for subscription"),
@@ -87,14 +93,18 @@ describe("LandingPage asset spotlight", () => {
     expect(screen.getByText("Loading offerings…")).toBeInTheDocument();
   });
 
-  it("replaces the presentation photo with the fundraising carousel once data loads, skipping published ones", () => {
+  it("finishes the presentation photo slot when data arrives after 1s, then cycles strictly between fundraising offerings", () => {
+    vi.useFakeTimers();
     query.isLoading = true;
     const { rerender } = render(<LandingPage />);
     const figure = screen.getByRole("figure", { name: "Featured assets" });
     expect(
-      within(figure).getByAltText("Contemporary architectural facade"),
+      within(figure).getByRole("img", {
+        name: "Contemporary architectural facade",
+      }),
     ).toBeInTheDocument();
 
+    act(() => vi.advanceTimersByTime(1000));
     query.isLoading = false;
     query.data = [
       {
@@ -110,16 +120,46 @@ describe("LandingPage asset spotlight", () => {
         imageurl: "/river.jpg",
         location: { city: "Luxembourg" },
       },
+      {
+        id: 3,
+        title: "Harbor Loft",
+        status: "fundraising",
+        imageurl: "/harbor.jpg",
+      },
+      { id: 4, title: "No photo", status: "fundraising" },
     ];
     rerender(<LandingPage />);
 
+    // At 1s (and up to 7.9s), the presentation photo continues smoothly without jumping.
     expect(
-      within(figure).queryByAltText("Contemporary architectural facade"),
+      within(figure).getByRole("img", {
+        name: "Contemporary architectural facade",
+      }),
+    ).toBeInTheDocument();
+    expect(
+      within(figure).queryByText("Open for subscription"),
+    ).not.toBeInTheDocument();
+
+    act(() => vi.advanceTimersByTime(6900));
+    expect(
+      within(figure).getByRole("img", {
+        name: "Contemporary architectural facade",
+      }),
+    ).toBeInTheDocument();
+
+    // At 8s total since page arrival, it transitions to the first fundraising offering.
+    act(() => vi.advanceTimersByTime(100));
+    expect(
+      within(figure).queryByRole("img", {
+        name: "Contemporary architectural facade",
+      }),
     ).not.toBeInTheDocument();
     expect(
       within(figure).queryByAltText("Future offering"),
     ).not.toBeInTheDocument();
-    expect(within(figure).getByAltText("River House")).toBeInTheDocument();
+    expect(
+      within(figure).getByRole("img", { name: "River House" }),
+    ).toBeInTheDocument();
     expect(
       within(figure).getByText("Open for subscription"),
     ).toBeInTheDocument();
@@ -127,6 +167,54 @@ describe("LandingPage asset spotlight", () => {
       within(figure).getByRole("link", { name: "View River House" }),
     ).toHaveAttribute("href", "/real-estate/2");
     expect(within(figure).getByText("Luxembourg")).toBeInTheDocument();
+
+    // Subsequent 8s intervals cycle strictly through fundraising offerings.
+    act(() => vi.advanceTimersByTime(8000));
+    expect(
+      within(figure).getByRole("link", { name: "View Harbor Loft" }),
+    ).toHaveAttribute("href", "/real-estate/3");
+
+    act(() => vi.advanceTimersByTime(8000));
+    expect(
+      within(figure).getByRole("link", { name: "View River House" }),
+    ).toHaveAttribute("href", "/real-estate/2");
+    expect(
+      within(figure).queryByRole("img", {
+        name: "Contemporary architectural facade",
+      }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("transitions from the presentation photo to a single fundraising offering and stays on it", () => {
+    vi.useFakeTimers();
+    query.data = [
+      {
+        id: 1,
+        title: "River House",
+        status: "fundraising",
+        imageurl: "/river.jpg",
+      },
+    ];
+    render(<LandingPage />);
+    const carousel = within(
+      screen.getByRole("figure", { name: "Featured assets" }),
+    );
+    expect(carousel.queryByRole("button")).not.toBeInTheDocument();
+    expect(
+      carousel.getByRole("img", {
+        name: "Contemporary architectural facade",
+      }),
+    ).toBeInTheDocument();
+
+    act(() => vi.advanceTimersByTime(8000));
+    expect(
+      carousel.getByRole("link", { name: "View River House" }),
+    ).toHaveAttribute("href", "/real-estate/1");
+
+    act(() => vi.advanceTimersByTime(16000));
+    expect(
+      carousel.getByRole("link", { name: "View River House" }),
+    ).toHaveAttribute("href", "/real-estate/1");
   });
 
   it("does not display successful portfolio metrics when the API fails", () => {
@@ -140,54 +228,6 @@ describe("LandingPage asset spotlight", () => {
       expect(screen.getByText(label).nextElementSibling).toHaveTextContent("—");
     }
     expect(screen.getByRole("button", { name: /Retry/ })).toBeInTheDocument();
-  });
-
-  it("cycles strictly through photographed fundraising assets without displaying controls", () => {
-    vi.useFakeTimers();
-    query.data = [
-      {
-        id: 1,
-        title: "River House",
-        status: "fundraising",
-        imageurl: "/river.jpg",
-      },
-      {
-        id: 2,
-        title: "Harbor Loft",
-        status: "fundraising",
-        imageurl: "/harbor.jpg",
-      },
-      {
-        id: 3,
-        title: "Garden House",
-        status: "published",
-        imageurl: "/garden.jpg",
-      },
-      { id: 4, title: "No photo", status: "fundraising" },
-    ];
-    render(<LandingPage />);
-    const carousel = within(
-      screen.getByRole("figure", { name: "Featured assets" }),
-    );
-    expect(carousel.queryByRole("button")).not.toBeInTheDocument();
-    expect(
-      carousel.queryByAltText("Contemporary architectural facade"),
-    ).not.toBeInTheDocument();
-    expect(carousel.queryByAltText("Garden House")).not.toBeInTheDocument();
-    expect(
-      carousel.getByRole("link", { name: "View River House" }),
-    ).toHaveAttribute("href", "/real-estate/1");
-    expect(carousel.getByText("Open for subscription")).toBeInTheDocument();
-
-    act(() => vi.advanceTimersByTime(8000));
-    expect(
-      carousel.getByRole("link", { name: "View Harbor Loft" }),
-    ).toHaveAttribute("href", "/real-estate/2");
-
-    act(() => vi.advanceTimersByTime(8000));
-    expect(
-      carousel.getByRole("link", { name: "View River House" }),
-    ).toHaveAttribute("href", "/real-estate/1");
   });
 
   it("hides navigation controls in the hero carousel", () => {
@@ -205,7 +245,7 @@ describe("LandingPage asset spotlight", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("rotates automatically and pauses on hover", () => {
+  it("still transitions out of the presentation photo if hovered on arrival, then pauses on the offering while hovered", () => {
     vi.useFakeTimers();
     query.data = [
       {
@@ -224,19 +264,19 @@ describe("LandingPage asset spotlight", () => {
     render(<LandingPage />);
     const figure = screen.getByRole("figure", { name: "Featured assets" });
     const carousel = within(figure);
+    fireEvent.mouseEnter(figure);
     act(() => vi.advanceTimersByTime(8000));
     expect(
-      carousel.getByRole("link", { name: "View Harbor Loft" }),
+      carousel.getByRole("link", { name: "View River House" }),
     ).toBeInTheDocument();
-    fireEvent.mouseEnter(figure);
     act(() => vi.advanceTimersByTime(12000));
     expect(
-      carousel.getByRole("link", { name: "View Harbor Loft" }),
+      carousel.getByRole("link", { name: "View River House" }),
     ).toBeInTheDocument();
     fireEvent.mouseLeave(figure);
     act(() => vi.advanceTimersByTime(8000));
     expect(
-      carousel.getByRole("link", { name: "View River House" }),
+      carousel.getByRole("link", { name: "View Harbor Loft" }),
     ).toBeInTheDocument();
   });
 
@@ -260,6 +300,7 @@ describe("LandingPage asset spotlight", () => {
     const carousel = within(
       screen.getByRole("figure", { name: "Featured assets" }),
     );
+    act(() => vi.advanceTimersByTime(8000));
     const link = carousel.getByRole("link", { name: "View River House" });
     fireEvent.focus(link);
     act(() => vi.advanceTimersByTime(12000));
@@ -337,7 +378,11 @@ describe("LandingPage asset spotlight", () => {
     const carousel = within(
       screen.getByRole("figure", { name: "Featured assets" }),
     );
-    act(() => vi.advanceTimersByTime(12000));
+    act(() => vi.advanceTimersByTime(8000));
+    expect(
+      carousel.getByRole("link", { name: "View River House" }),
+    ).toBeInTheDocument();
+    act(() => vi.advanceTimersByTime(16000));
     expect(
       carousel.getByRole("link", { name: "View River House" }),
     ).toBeInTheDocument();
