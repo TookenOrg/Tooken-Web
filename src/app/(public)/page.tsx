@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowDown, ArrowRight, ArrowUpRight } from "lucide-react";
+import { ArrowRight, ArrowUpRight } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
@@ -168,10 +168,10 @@ export default function LandingPage() {
                   </Link>
                 </Button>
                 <Link
-                  href="#how-it-works"
+                  href="/how-it-works"
                   className="inline-flex items-center gap-2 text-sm text-ink underline underline-offset-4 hover:text-muted-foreground"
                 >
-                  How it works <ArrowDown className="size-3.5" aria-hidden />
+                  How it works <ArrowRight className="size-3.5" aria-hidden />
                 </Link>
               </div>
               <p className="mt-8 max-w-sm text-xs leading-relaxed text-muted-foreground">
@@ -477,6 +477,15 @@ export default function LandingPage() {
               Real estate is the offering category available today. Broader
               real-world asset tokenization remains a direction, with each
               category requiring its own structure and offering terms.
+            </p>
+            <p className="pt-1">
+              <Link
+                href="/how-it-works"
+                className="inline-flex items-center gap-2 font-medium text-ink underline underline-offset-4 hover:text-muted-foreground"
+              >
+                Explore the interactive ERC-3643 &amp; minting diagrams{" "}
+                <ArrowRight className="size-3.5" aria-hidden />
+              </Link>
             </p>
           </div>
         </div>

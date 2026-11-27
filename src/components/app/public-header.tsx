@@ -19,7 +19,7 @@ import { AccountSummary, UserMenu } from "./user-menu";
 
 const LINKS = [
   { label: "Marketplace", href: "/explore" },
-  { label: "How it works", href: "/#how-it-works" },
+  { label: "How it works", href: "/how-it-works" },
   { label: "Institutions", href: "/#institutions" },
 ];
 

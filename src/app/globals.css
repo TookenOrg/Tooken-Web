@@ -276,6 +276,84 @@
   font-variant-numeric: tabular-nums;
 }
 
+@keyframes dash-flow {
+  from {
+    stroke-dashoffset: 28;
+  }
+
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+@keyframes dash-flow-reverse {
+  from {
+    stroke-dashoffset: 0;
+  }
+
+  to {
+    stroke-dashoffset: 28;
+  }
+}
+
+@keyframes packet-travel {
+  0% {
+    transform: translateX(0%);
+    opacity: 0;
+  }
+
+  15% {
+    opacity: 1;
+  }
+
+  85% {
+    opacity: 1;
+  }
+
+  100% {
+    transform: translateX(100%);
+    opacity: 0;
+  }
+}
+
+@keyframes pulse-ring {
+  0%,
+  100% {
+    opacity: 0.3;
+    transform: scale(1);
+  }
+
+  50% {
+    opacity: 0.75;
+    transform: scale(1.06);
+  }
+}
+
+.animate-dash-flow {
+  stroke-dasharray: 6 8;
+  animation: dash-flow 1.4s linear infinite;
+}
+
+.animate-dash-flow-reverse {
+  stroke-dasharray: 6 8;
+  animation: dash-flow-reverse 1.4s linear infinite;
+}
+
+.animate-packet-travel {
+  animation: packet-travel 2.6s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+}
+
+.animate-pulse-ring {
+  animation: pulse-ring 2.4s ease-in-out infinite;
+}
+
+.motion-paused .animate-dash-flow,
+.motion-paused .animate-dash-flow-reverse,
+.motion-paused .animate-packet-travel,
+.motion-paused .animate-pulse-ring {
+  animation: none;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .bg-animated-gradient-dark,
   .bg-animated-gradient-amber,
@@ -283,6 +361,13 @@
   .animate-float-slow,
   .animate-float-slower,
   .animate-fade-up {
+    animation: none;
+  }
+
+  .animate-dash-flow:not(.motion-opt-in *),
+  .animate-dash-flow-reverse:not(.motion-opt-in *),
+  .animate-packet-travel:not(.motion-opt-in *),
+  .animate-pulse-ring:not(.motion-opt-in *) {
     animation: none;
   }
 }
