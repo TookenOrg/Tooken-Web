@@ -19,6 +19,10 @@ describe("PublicFooter navigation", () => {
       "href",
       "/",
     );
+    expect(screen.getByRole("link", { name: "How it works" })).toHaveAttribute(
+      "href",
+      "/how-it-works",
+    );
     expect(screen.getByRole("link", { name: "About the MVP" })).toHaveAttribute(
       "href",
       "/project",

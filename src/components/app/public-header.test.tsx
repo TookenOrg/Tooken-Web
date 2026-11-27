@@ -64,5 +64,11 @@ describe("PublicHeader mobile menu", () => {
     expect(
       screen.getAllByRole("link", { name: "Marketplace", hidden: true }),
     ).toHaveLength(2);
+    for (const link of screen.getAllByRole("link", {
+      name: "How it works",
+      hidden: true,
+    })) {
+      expect(link).toHaveAttribute("href", "/how-it-works");
+    }
   });
 });

@@ -27,7 +27,7 @@ export function PublicFooter() {
               </Link>
             </li>
             <li>
-              <Link href="/#how-it-works" className="hover:text-ink">
+              <Link href="/how-it-works" className="hover:text-ink">
                 How it works
               </Link>
             </li>

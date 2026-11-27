@@ -305,6 +305,11 @@ export default function ProjectPage() {
               <ArrowLeft aria-hidden /> Back to home
             </Link>
           </Button>
+          <Button asChild variant="outline" size="lg" className="h-12 px-6">
+            <Link href="/how-it-works">
+              How Tooken works <ArrowUpRight aria-hidden />
+            </Link>
+          </Button>
           <Button asChild size="lg" className="h-12 px-6">
             <Link href="/explore">
               Explore the marketplace <ArrowUpRight aria-hidden />
